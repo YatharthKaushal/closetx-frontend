@@ -29,11 +29,17 @@ function configFor(gate: Exclude<Gate, { state: 'ready' }>): Config {
       };
     case 'retailer_terminated':
       return {
-        kicker: 'Account terminated',
+        kicker: 'Account terminated — read-only',
         kickerTone: 'danger',
         title: <>This account has been terminated.</>,
-        body: <>Contact admin if you think this is a mistake.</>,
-        cta: null,
+        body: (
+          <>
+            You can still view your orders, invoices, and statements for
+            record-keeping, but nothing can be created or changed. Contact admin
+            if you think this is a mistake.
+          </>
+        ),
+        cta: { label: 'View invoices', href: '/retailer/invoices' },
       };
     case 'no_store':
       return {
@@ -56,7 +62,7 @@ function configFor(gate: Exclude<Gate, { state: 'ready' }>): Config {
         body: (
           <>
             You'll be able to publish products once admin approves your storefront.
-            Platform fee and payout cadence are set at that time.
+            Your platform fee and how often you're paid are set at that time.
           </>
         ),
         cta: { label: 'View storefront', href: '/retailer/store' },
@@ -79,10 +85,10 @@ function configFor(gate: Exclude<Gate, { state: 'ready' }>): Config {
       };
     case 'floor_breached':
       return {
-        kicker: 'Performance floor breached',
+        kicker: 'Below the required standard',
         kickerTone: 'warning',
-        title: <>Your store is below the {gate.metric} threshold.</>,
-        body: <>Repeated breaches escalate the warning ladder. Review the metric and act.</>,
+        title: <>Your store is below the required level for {gate.metric}.</>,
+        body: <>If this keeps happening, the warnings get more serious. Check the number and fix it.</>,
         cta: { label: 'View dashboard', href: '/retailer/dashboard' },
       };
     case 'suspended':

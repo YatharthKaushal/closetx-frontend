@@ -53,7 +53,10 @@ export default function RetailerLogin() {
         /* fall through with empty permissions */
       }
       signIn({ kind: 'retailer', token, retailer, permissions });
-      navigate('/retailer/dashboard', { replace: true });
+      // Delivery agents have a dedicated, focused surface — send them straight there.
+      navigate(retailer.subRole === 'delivery_agent' ? '/retailer/deliveries' : '/retailer/dashboard', {
+        replace: true,
+      });
     } catch (e) {
       if (e instanceof ApiError) {
         const appId = (e.details as { applicationId?: string } | undefined)?.applicationId;

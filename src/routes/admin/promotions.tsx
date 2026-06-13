@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Plus, Search, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/cn';
 import {
   discountTypeLabel,
   formatDiscount,
@@ -11,7 +12,8 @@ import {
   mechanismLabel,
   promotionStatusMeta,
 } from '@/lib/status';
-import type { AdminStoreView, DiscountType, Mechanism, Promotion, PromotionAnomaly, PromotionPerformance, PromotionStatus, TargetedDrop } from '@/lib/types';
+import type { DiscountType, Mechanism, Promotion, PromotionAnomaly, PromotionPerformance, PromotionStatus, TargetedDrop } from '@/lib/types';
+import { StoreCombobox } from '@/components/ui/store-combobox';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -71,42 +73,39 @@ export default function AdminPromotions() {
 
       <Tabs defaultValue="offers">
         <TabsList className="overflow-x-auto whitespace-nowrap">
-          <TabsTrigger value="offers">Offers</TabsTrigger>
-          <TabsTrigger value="coupons">Coupons</TabsTrigger>
-          <TabsTrigger value="vouchers">Vouchers</TabsTrigger>
+          <TabsTrigger value="all">All promotions</TabsTrigger>
           <TabsTrigger value="drops">Targeted drops</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="comparison">Comparison</TabsTrigger>
           <TabsTrigger value="anomalies">Anomalies</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="offers"><MechanismList mechanism="offer" /></TabsContent>
-        <TabsContent value="coupons"><MechanismList mechanism="coupon" /></TabsContent>
-        <TabsContent value="vouchers"><MechanismList mechanism="voucher" /></TabsContent>
+        <TabsContent value="all"><AllPromotionsList /></TabsContent>
         <TabsContent value="drops"><DropsTab /></TabsContent>
         <TabsContent value="performance"><PerformanceTab /></TabsContent>
-        <TabsContent value="comparison"><ComparisonTab /></TabsContent>
         <TabsContent value="anomalies"><AnomaliesTab /></TabsContent>
       </Tabs>
     </Page>
   );
 }
 
-function MechanismList({ mechanism }: { mechanism: Mechanism }) {
+const MECHANISM_CHIPS: ReadonlyArray<{ value: Mechanism | 'all'; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'offer', label: 'Offer' },
+  { value: 'coupon', label: 'Coupon' },
+  { value: 'voucher', label: 'Voucher' },
+];
+
+function AllPromotionsList() {
+  const [mechanism, setMechanism] = useState<Mechanism | 'all'>('all');
   const [status, setStatus] = useState<PromotionStatus | 'all'>('all');
   const [discountType, setDiscountType] = useState<DiscountType | 'all'>('all');
   const [storeId, setStoreId] = useState<string>('all');
   const [q, setQ] = useState('');
 
-  const stores = useQuery({
-    queryKey: ['admin', 'stores', 'all'],
-    queryFn: () => api<AdminStoreView[]>('/admin/stores'),
-  });
-
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['admin', 'promotions', mechanism, status, discountType, storeId],
+    queryKey: ['admin', 'promotions', 'all', status, discountType, storeId],
     queryFn: () => {
-      const params = new URLSearchParams({ mechanism });
+      const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
       if (discountType !== 'all') params.set('discountType', discountType);
       if (storeId === '__platform__') params.set('platformOnly', 'true');
@@ -116,11 +115,42 @@ function MechanismList({ mechanism }: { mechanism: Mechanism }) {
   });
 
   const filtered = (data ?? [])
-    .filter((p) => p.mechanism === mechanism)
+    .filter((p) => mechanism === 'all' || p.mechanism === mechanism)
     .filter((p) => (q.trim() ? p.name.toLowerCase().includes(q.toLowerCase()) || p.id.toLowerCase().includes(q.toLowerCase()) : true));
+
+  function clearFilters() {
+    setMechanism('all');
+    setStatus('all');
+    setDiscountType('all');
+    setStoreId('all');
+    setQ('');
+  }
+  const hasFilters =
+    mechanism !== 'all' || status !== 'all' || discountType !== 'all' || storeId !== 'all' || q.trim().length > 0;
 
   return (
     <>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {MECHANISM_CHIPS.map((c) => {
+          const active = mechanism === c.value;
+          return (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => setMechanism(c.value)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-[12px] transition-colors',
+                active
+                  ? 'border-ink bg-ink text-bg'
+                  : 'border-line bg-bg text-ink-3 hover:text-ink hover:bg-bg-2',
+              )}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="relative max-w-md flex-1">
           <Search className="pointer-events-none absolute left-1 top-1/2 size-4 -translate-y-1/2 text-ink-3" />
@@ -143,16 +173,22 @@ function MechanismList({ mechanism }: { mechanism: Mechanism }) {
               ))}
             </SelectContent>
           </Select>
-          <Select value={storeId} onValueChange={setStoreId} disabled={stores.isLoading}>
-            <SelectTrigger className="sm:w-56"><SelectValue placeholder={stores.isLoading ? 'Loading…' : 'All retailers'} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All retailers</SelectItem>
-              <SelectItem value="__platform__">Platform-wide only</SelectItem>
-              {(stores.data ?? []).map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.legalName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="sm:w-56">
+            <StoreCombobox
+              value={storeId}
+              onChange={setStoreId}
+              placeholder="All retailers"
+              extraOptions={[
+                { value: 'all', label: 'All retailers' },
+                { value: '__platform__', label: 'Platform-wide only' },
+              ]}
+            />
+          </div>
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
         </div>
       </div>
 
@@ -163,7 +199,7 @@ function MechanismList({ mechanism }: { mechanism: Mechanism }) {
       ) : isError ? (
         <Empty kicker="Connection lost" title="Couldn't load promotions" action={<Button variant="outline" onClick={() => refetch()}>Retry</Button>} />
       ) : filtered.length === 0 ? (
-        <Empty kicker="None" title={`No ${mechanism}s match this filter.`} />
+        <Empty kicker="None" title="No promotions match this filter." />
       ) : (
         <ol className="border-y border-rule divide-y divide-rule" data-stagger>
           {filtered.map((p, i) => <PromotionRow key={p.id} promo={p} ord={i + 1} />)}
@@ -198,7 +234,7 @@ function DropsTab() {
                   <div className="min-w-0 flex-1">
                     <div className="text-[14px] font-semibold text-ink">{d.name}</div>
                     <div className="mt-1 text-[12px] text-ink-3">
-                      Promo {d.promotionName} · cohort {d.cohortKind.replace(/_/g, ' ')} · audience {d.audienceSize.toLocaleString('en-IN')}
+                      Promo {d.promotionName} · group {d.cohortKind.replace(/_/g, ' ')} · {d.audienceSize.toLocaleString('en-IN')} people
                     </div>
                     <div className="mt-1 text-[11.5px] text-ink-4">Pushed {formatAge(d.pushedAt)} · {d.redemptionCount} redemptions</div>
                   </div>
@@ -212,14 +248,33 @@ function DropsTab() {
   );
 }
 
+type ComparisonRow = {
+  key: string;
+  promoCount: number;
+  redemptions: number;
+  totalDiscountPaise: number;
+  gmvInfluencedPaise: number;
+  uniqueConsumers: number;
+};
+
 function PerformanceTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'promotions', 'performance'],
     queryFn: () => api<PromotionPerformance[]>('/admin/promotions/performance'),
   });
+  const byMech = useQuery({
+    queryKey: ['admin', 'promotions', 'performance', 'by-mechanism'],
+    queryFn: () => api<ComparisonRow[]>('/admin/promotions/performance/by-mechanism'),
+  });
+  const byType = useQuery({
+    queryKey: ['admin', 'promotions', 'performance', 'by-discount-type'],
+    queryFn: () => api<ComparisonRow[]>('/admin/promotions/performance/by-discount-type'),
+  });
   const list = data ?? [];
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <ComparisonGrid title="By mechanism" rows={byMech.data ?? []} loading={byMech.isLoading} />
+      <ComparisonGrid title="By discount type" rows={byType.data ?? []} loading={byType.isLoading} />
       {isLoading ? <Skeleton className="h-40" /> : list.length === 0 ? (
         <Empty kicker="No data" title="No promotion metrics yet." />
       ) : (
@@ -230,8 +285,8 @@ function PerformanceTab() {
                 <tr>
                   <th className="px-3 py-2 text-left font-medium text-ink-3">Promotion</th>
                   <th className="px-3 py-2 text-right font-medium text-ink-3">Redemptions</th>
-                  <th className="px-3 py-2 text-right font-medium text-ink-3">GMV influence</th>
-                  <th className="px-3 py-2 text-right font-medium text-ink-3">AOV lift</th>
+                  <th className="px-3 py-2 text-right font-medium text-ink-3">Sales influenced</th>
+                  <th className="px-3 py-2 text-right font-medium text-ink-3">Order size lift</th>
                   <th className="px-3 py-2 text-right font-medium text-ink-3">Refund rate</th>
                   <th className="px-3 py-2 text-center font-medium text-ink-3">Anomaly</th>
                 </tr>
@@ -261,32 +316,6 @@ function PerformanceTab() {
   );
 }
 
-type ComparisonRow = {
-  key: string;
-  promoCount: number;
-  redemptions: number;
-  totalDiscountPaise: number;
-  gmvInfluencedPaise: number;
-  uniqueConsumers: number;
-};
-
-function ComparisonTab() {
-  const byMech = useQuery({
-    queryKey: ['admin', 'promotions', 'performance', 'by-mechanism'],
-    queryFn: () => api<ComparisonRow[]>('/admin/promotions/performance/by-mechanism'),
-  });
-  const byType = useQuery({
-    queryKey: ['admin', 'promotions', 'performance', 'by-discount-type'],
-    queryFn: () => api<ComparisonRow[]>('/admin/promotions/performance/by-discount-type'),
-  });
-  return (
-    <div className="space-y-6">
-      <ComparisonGrid title="By mechanism" rows={byMech.data ?? []} loading={byMech.isLoading} />
-      <ComparisonGrid title="By discount type" rows={byType.data ?? []} loading={byType.isLoading} />
-    </div>
-  );
-}
-
 function ComparisonGrid({ title, rows, loading }: { title: string; rows: ComparisonRow[]; loading: boolean }) {
   return (
     <Card>
@@ -305,7 +334,7 @@ function ComparisonGrid({ title, rows, loading }: { title: string; rows: Compari
                 <th className="px-3 py-2 text-right font-medium text-ink-3">Redemptions</th>
                 <th className="px-3 py-2 text-right font-medium text-ink-3">Unique consumers</th>
                 <th className="px-3 py-2 text-right font-medium text-ink-3">Discount given</th>
-                <th className="px-3 py-2 text-right font-medium text-ink-3">GMV influenced</th>
+                <th className="px-3 py-2 text-right font-medium text-ink-3">Sales influenced</th>
               </tr>
             </thead>
             <tbody>

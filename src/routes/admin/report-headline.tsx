@@ -51,7 +51,7 @@ export default function AdminReportHeadline() {
       <PageHeader
         kicker="Reports"
         title="Headline — last 30 days"
-        description="GMV, take rate, AOV, refund rate, and monthly signup cohorts. Surface for leadership reviews."
+        description="Total sales, platform fee %, average order value, refund rate, and monthly signups — for leadership reviews."
         actions={
           <>
             <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
@@ -67,26 +67,26 @@ export default function AdminReportHeadline() {
       ) : (
         <>
           <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="GMV" value={formatPaise(data.grossMerchandiseValuePaise)} />
+            <Kpi label="Total sales" value={formatPaise(data.grossMerchandiseValuePaise)} />
             <Kpi label="Orders" value={data.orderCount.toLocaleString('en-IN')} />
-            <Kpi label="AOV" value={formatPaise(data.averageOrderValuePaise)} />
-            <Kpi label="Take rate" value={bp(data.takeRateBp)} />
+            <Kpi label="Avg order value" value={formatPaise(data.averageOrderValuePaise)} />
+            <Kpi label="Platform fee" value={bp(data.takeRateBp)} />
             <Kpi label="Commission" value={formatPaise(data.commissionPaise)} />
             <Kpi label="TCS" value={formatPaise(data.tcsPaise)} />
             <Kpi label="Refunds" value={formatPaise(data.refundsPaise)} sub={`${data.refundCount} refunds · ${bp(data.refundRateBp)}`} />
             <Kpi label="Consumers (30d new)" value={data.newConsumers30d.toLocaleString('en-IN')} sub={`${data.totalConsumers.toLocaleString('en-IN')} total`} />
           </div>
 
-          <div className="mb-3 text-[12.5px] font-medium text-ink-2">Monthly signup cohorts (12 months)</div>
+          <div className="mb-3 text-[12.5px] font-medium text-ink-2">Monthly signups (last 12 months)</div>
           {data.cohorts.length === 0 ? (
-            <Empty kicker="No cohorts" title="No signups in lookback window." />
+            <Empty kicker="No signups" title="No signups in the last 12 months." />
           ) : (
             <Card>
               <CardContent className="overflow-x-auto p-0">
                 <table className="w-full text-[12.5px]">
                   <thead className="bg-bg-2/40">
                     <tr>
-                      <th className="px-3 py-2 text-left font-medium text-ink-3">Cohort</th>
+                      <th className="px-3 py-2 text-left font-medium text-ink-3">Month</th>
                       <th className="px-3 py-2 text-right font-medium text-ink-3">Signups</th>
                       <th className="px-3 py-2 text-right font-medium text-ink-3">First-30d orders</th>
                       <th className="px-3 py-2 text-right font-medium text-ink-3">First-30d spend</th>

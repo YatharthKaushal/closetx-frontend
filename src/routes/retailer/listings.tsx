@@ -1,31 +1,19 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, ArrowUpRight, Check, ImageOff, Plus, Search } from 'lucide-react';
+import { ArrowUpRight, ImageOff, Plus, Search } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { canPublishProducts, deriveGate } from '@/lib/gate';
 import { listingStatusMeta } from '@/lib/status';
-import type { AttributeTemplate, Brand, Category, Listing, ListingStatus, RetailerProfile, Store } from '@/lib/types';
+import type { Listing, ListingStatus, RetailerProfile, Store } from '@/lib/types';
 import { GateNotice } from '@/components/retailer/gate-notice';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
-import { Input, Textarea } from '@/components/ui/input';
-import { FieldError, Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -41,54 +29,9 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: ListingStatus | 'all'; label: strin
   { value: 'retired', label: 'Retired' },
 ];
 
-const CreateSchema = z.object({
-  name: z.string().trim().min(1, 'Required').max(200),
-  description: z.string().trim().max(5000).optional(),
-  brandId: z.string().min(1, 'Pick a brand'),
-  categoryId: z.string().min(1, 'Pick a category'),
-  gender: z.enum(['her', 'him', 'unisex']),
-  badge: z.enum(['new', 'hot', 'trending', 'none']).default('none'),
-  occasion: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
-  ageGroup: z.enum(['kids', 'teens', 'adults', 'all']).nullable().optional(),
-  listingPolicy: z.enum(['return', 'replace', 'final_sale']).default('return'),
-  hsn: z.string().trim().max(8).optional(),
-  templateId: z.string().optional(),
-  // No status here — every new listing starts as `draft`. The retailer publishes
-  // (status='active') from the detail page after adding variants and images.
-});
-type CreateValues = z.infer<typeof CreateSchema>;
-
-const WIZARD_STEPS = ['Basics', 'Tags', 'Template', 'Policy', 'Review'] as const;
-const STEP_FIELDS: Record<number, (keyof CreateValues)[]> = {
-  0: ['name', 'brandId', 'categoryId', 'gender'],
-  1: ['description', 'badge', 'occasion', 'ageGroup'],
-  2: ['templateId'],
-  3: ['listingPolicy', 'hsn'],
-  4: [],
-};
-
-const OCCASION_PRESETS = [
-  'casual', 'formal', 'work', 'party', 'festive',
-  'sports', 'ethnic', 'wedding', 'beach', 'lounge',
-] as const;
-
-const POLICY_LABEL: Record<CreateValues['listingPolicy'], string> = {
-  return: 'Returnable',
-  replace: 'Replace only',
-  final_sale: 'Final sale',
-};
-
-const AGE_GROUP_LABEL: Record<NonNullable<CreateValues['ageGroup']>, string> = {
-  kids: 'Kids',
-  teens: 'Teens',
-  adults: 'Adults',
-  all: 'All ages',
-};
-
 type MeResponse = { retailer: RetailerProfile; store: Store | null };
 
 export default function RetailerListings() {
-  const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<ListingStatus | 'all'>('all');
   const [q, setQ] = useState('');
   const [bulkMode, setBulkMode] = useState(false);
@@ -172,8 +115,8 @@ export default function RetailerListings() {
               >
                 {bulkMode ? 'Exit bulk mode' : 'Bulk select'}
               </Button>
-              <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setOpen(true)}>
-                New product
+              <Button asChild variant="ink" caps iconLeft={<Plus className="size-3.5" />}>
+                <Link to="/retailer/listings/new">New product</Link>
               </Button>
             </div>
           ) : undefined
@@ -229,8 +172,8 @@ export default function RetailerListings() {
               }
               action={
                 !q && (
-                  <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setOpen(true)}>
-                    Add product
+                  <Button asChild variant="ink" caps iconLeft={<Plus className="size-3.5" />}>
+                    <Link to="/retailer/listings/new">Add first product</Link>
                   </Button>
                 )
               }
@@ -300,8 +243,6 @@ export default function RetailerListings() {
           pending={bulkStatus.isPending || deleteListing.isPending}
         />
       )}
-
-      <CreateDialog open={open} onOpenChange={setOpen} />
     </Page>
   );
 }
@@ -379,9 +320,6 @@ function ListingRow({ listing, bulkMode, selected, onSelectChange, onToggleStatu
             <span className="font-medium text-ink-2">{listing.brand?.name ?? 'Unbranded'}</span>
             {' · '}{listing.category?.label ?? listing.categoryId}
             {' · '}<span className="capitalize">{listing.gender}</span>
-            {listing.badge !== 'none' && (
-              <>{' · '}<span className="capitalize text-accent">{listing.badge}</span></>
-            )}
           </span>
         </div>
       </td>
@@ -427,534 +365,5 @@ function ListingRow({ listing, bulkMode, selected, onSelectChange, onToggleStatu
         </div>
       </td>
     </tr>
-  );
-}
-
-function CreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const qc = useQueryClient();
-  const navigate = useNavigate();
-  const [step, setStep] = useState(0);
-
-  const brands = useQuery({ queryKey: ['catalog', 'brands'], queryFn: () => api<Brand[]>('/catalog/brands') });
-  const categories = useQuery({
-    queryKey: ['catalog', 'categories'],
-    queryFn: () => api<Category[]>('/catalog/categories'),
-  });
-  const templates = useQuery({
-    queryKey: ['retailer', 'attribute-templates'],
-    queryFn: () => api<AttributeTemplate[]>('/retailer/attribute-templates'),
-  });
-
-  const form = useForm({
-    resolver: zodResolver(CreateSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      brandId: '',
-      categoryId: '',
-      gender: 'unisex' as const,
-      badge: 'none' as const,
-      occasion: [] as string[],
-      ageGroup: null as CreateValues['ageGroup'],
-      listingPolicy: 'return' as const,
-      hsn: '',
-      templateId: '',
-    },
-  });
-  const { register, handleSubmit, setValue, watch, reset, trigger, formState: { errors } } = form;
-
-  function fullReset() {
-    reset();
-    setStep(0);
-  }
-
-  const create = useMutation({
-    mutationFn: (v: CreateValues) =>
-      api<Listing>('/retailer/listings', {
-        method: 'POST',
-        body: {
-          ...v,
-          galleryUrls: [],
-          ...(v.templateId ? {} : { templateId: undefined }),
-          ageGroup: v.ageGroup ?? null,
-        },
-      }),
-    onSuccess: (l) => {
-      toast.success(`Created · ${l.name}`, {
-        description: 'Add variants and at least one image, then publish.',
-      });
-      onOpenChange(false);
-      fullReset();
-      void qc.invalidateQueries({ queryKey: ['retailer', 'listings'] });
-      navigate(`/retailer/listings/${l.id}`);
-    },
-    onError: (e) => {
-      const code = e instanceof ApiError ? e.code : '';
-      toast.error(
-        code === 'retailer_not_approved'
-          ? 'Your account needs admin approval first.'
-          : code === 'store_not_active'
-            ? 'Your store needs to be approved before publishing.'
-            : e instanceof Error
-              ? e.message
-              : 'Could not create product',
-      );
-    },
-  });
-
-  const currentGender = watch('gender');
-  const visibleCategories = useMemo(
-    () => (categories.data ?? []).filter((c) => c.gender === currentGender || c.gender === 'unisex'),
-    [categories.data, currentGender],
-  );
-
-  // Filter templates by selected category (US-5.2.2). A template either targets a
-  // specific category or applies platform-wide — both are shown when relevant.
-  const selectedCategoryId = watch('categoryId');
-  const visibleTemplates = useMemo(() => {
-    const all = templates.data ?? [];
-    if (!selectedCategoryId) return all;
-    return all.filter((t) => {
-      const tplAny = t as AttributeTemplate & { categoryId?: string | null };
-      return !tplAny.categoryId || tplAny.categoryId === selectedCategoryId;
-    });
-  }, [templates.data, selectedCategoryId]);
-
-  async function goNext() {
-    const fields = STEP_FIELDS[step] ?? [];
-    const valid = fields.length === 0 ? true : await trigger(fields);
-    if (valid) setStep((s) => Math.min(s + 1, WIZARD_STEPS.length - 1));
-  }
-  function goBack() {
-    setStep((s) => Math.max(s - 1, 0));
-  }
-  function jumpTo(target: number) {
-    // Backward jumps are always free; forward jumps still validate intermediate steps.
-    if (target <= step) setStep(target);
-  }
-
-  const values = watch();
-  const brandLabel = brands.data?.find((b) => b.id === values.brandId)?.name ?? '—';
-  const categoryLabel = categories.data?.find((c) => c.id === values.categoryId)?.label ?? '—';
-  const templateLabel = templates.data?.find((t) => t.id === values.templateId)?.name ?? 'No template';
-
-  const isLast = step === WIZARD_STEPS.length - 1;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        onOpenChange(o);
-        if (!o) fullReset();
-      }}
-    >
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>New product · {WIZARD_STEPS[step]}</DialogTitle>
-          <DialogDescription>
-            Step {step + 1} of {WIZARD_STEPS.length} — set the basics here; variants and gallery come next on the listing page.
-          </DialogDescription>
-        </DialogHeader>
-
-        <WizardStepIndicator step={step} onJump={jumpTo} />
-
-        <form onSubmit={handleSubmit((v) => create.mutate(v))} className="space-y-5" noValidate>
-          {/* Step 1 — Basics */}
-          {step === 0 && (
-            <>
-              <div>
-                <Label htmlFor="name" required>Name</Label>
-                <Input id="name" placeholder="e.g. Linen relaxed shirt" {...register('name')} />
-                <FieldError>{errors.name?.message}</FieldError>
-              </div>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <Label required>Cut for</Label>
-                  <Select value={currentGender} onValueChange={(v) => setValue('gender', v as 'her' | 'him' | 'unisex')}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="her">Her</SelectItem>
-                      <SelectItem value="him">Him</SelectItem>
-                      <SelectItem value="unisex">Unisex</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FieldError>{errors.gender?.message}</FieldError>
-                </div>
-                <div>
-                  <Label required>Brand</Label>
-                  <Select value={watch('brandId')} onValueChange={(v) => setValue('brandId', v, { shouldValidate: true })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={brands.isLoading ? 'Loading…' : 'Pick a brand'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(brands.data ?? []).map((b) => (
-                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FieldError>{errors.brandId?.message}</FieldError>
-                </div>
-              </div>
-              <div>
-                <Label required>Category</Label>
-                <Select
-                  value={watch('categoryId')}
-                  onValueChange={(v) => {
-                    setValue('categoryId', v, { shouldValidate: true });
-                    // Drop template when switching to a category it doesn't apply to.
-                    const tpl = templates.data?.find((t) => t.id === watch('templateId'));
-                    const tplAny = tpl as (AttributeTemplate & { categoryId?: string | null }) | undefined;
-                    if (tpl && tplAny?.categoryId && tplAny.categoryId !== v) {
-                      setValue('templateId', '');
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={categories.isLoading ? 'Loading…' : 'Pick a category'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {visibleCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.label} · {c.gender}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldError>{errors.categoryId?.message}</FieldError>
-              </div>
-            </>
-          )}
-
-          {/* Step 2 — Tags & description */}
-          {step === 1 && (
-            <>
-              <div>
-                <Label htmlFor="description" hint="Optional">Description</Label>
-                <Textarea id="description" placeholder="What makes it special…" {...register('description')} />
-                <FieldError>{errors.description?.message}</FieldError>
-              </div>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <Label hint="Optional">Badge</Label>
-                  <Select value={watch('badge') ?? 'none'} onValueChange={(v) => setValue('badge', v as CreateValues['badge'])}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="new">New</SelectItem>
-                      <SelectItem value="hot">Hot</SelectItem>
-                      <SelectItem value="trending">Trending</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label hint="Optional">Age group</Label>
-                  <Select
-                    value={watch('ageGroup') ?? '__none__'}
-                    onValueChange={(v) => setValue('ageGroup', v === '__none__' ? null : (v as NonNullable<CreateValues['ageGroup']>))}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Unspecified" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Unspecified</SelectItem>
-                      <SelectItem value="kids">Kids</SelectItem>
-                      <SelectItem value="teens">Teens</SelectItem>
-                      <SelectItem value="adults">Adults</SelectItem>
-                      <SelectItem value="all">All ages</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label hint="Optional · multi-select">Occasion tags</Label>
-                <OccasionChipPicker
-                  value={watch('occasion') ?? []}
-                  onChange={(next) => setValue('occasion', next, { shouldValidate: true })}
-                />
-                <FieldError>{errors.occasion?.message}</FieldError>
-              </div>
-            </>
-          )}
-
-          {/* Step 3 — Template */}
-          {step === 2 && (
-            <>
-              <div>
-                <Label hint="Optional — auto-fills variant axis names">Attribute template</Label>
-                <Select
-                  value={watch('templateId') || '__none__'}
-                  onValueChange={(v) => setValue('templateId', v === '__none__' ? '' : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No template — build manually" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No template</SelectItem>
-                    {visibleTemplates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                        {t.isPlatformDefault ? ' · platform default' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-1 text-[11.5px] text-ink-3">
-                  {visibleTemplates.length === 0 ? (
-                    <>
-                      No templates for this category yet.{' '}
-                      <a
-                        className="underline"
-                        href="/retailer/attribute-templates"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open template editor
-                      </a>{' '}
-                      to create one — variants here will let you build axes manually.
-                    </>
-                  ) : (
-                    <>
-                      Showing {visibleTemplates.length} template{visibleTemplates.length === 1 ? '' : 's'} for{' '}
-                      <em>{categoryLabel}</em>. The template locks once you add variants.
-                    </>
-                  )}
-                </p>
-              </div>
-              <div className="rounded-xs border border-rule bg-paper-2/40 px-3 py-2.5 text-[12.5px] text-ink-2 leading-relaxed">
-                Don't see a fit?{' '}
-                <a className="underline" href="/retailer/attribute-templates" target="_blank" rel="noreferrer">
-                  Open template editor in a new tab
-                </a>{' '}
-                — when you come back, the new one will appear in this list.
-              </div>
-            </>
-          )}
-
-          {/* Step 4 — Policy */}
-          {step === 3 && (
-            <>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <Label required>Return policy</Label>
-                  <Select
-                    value={watch('listingPolicy') ?? 'return'}
-                    onValueChange={(v) => setValue('listingPolicy', v as CreateValues['listingPolicy'])}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="return">Returnable</SelectItem>
-                      <SelectItem value="replace">Replace only</SelectItem>
-                      <SelectItem value="final_sale">Final sale</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="hsn" hint="GST">HSN code</Label>
-                  <Input id="hsn" mono placeholder="e.g. 6105" {...register('hsn')} />
-                  <FieldError>{errors.hsn?.message}</FieldError>
-                </div>
-              </div>
-              <div className="rounded-xs border border-rule bg-paper-2/40 px-3 py-3 text-[12.5px] text-ink-2 leading-relaxed">
-                Policy explained:
-                <ul className="mt-1.5 list-disc pl-5 space-y-0.5">
-                  <li><strong>Returnable</strong> — buyer can return for a refund within the platform window.</li>
-                  <li><strong>Replace only</strong> — exchange for the same SKU; no cash refund.</li>
-                  <li><strong>Final sale</strong> — non-returnable. Use sparingly to keep trust high.</li>
-                </ul>
-              </div>
-            </>
-          )}
-
-          {/* Step 5 — Review */}
-          {step === 4 && (
-            <ReviewSummary
-              values={values}
-              brandLabel={brandLabel}
-              categoryLabel={categoryLabel}
-              templateLabel={templateLabel}
-              onEdit={jumpTo}
-            />
-          )}
-
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <div className="flex-1" />
-            {step > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                iconLeft={<ArrowLeft className="size-3.5" />}
-                onClick={goBack}
-              >
-                Back
-              </Button>
-            )}
-            {!isLast ? (
-              <Button
-                type="button"
-                variant="ink"
-                iconRight={<ArrowRight className="size-3.5" />}
-                onClick={goNext}
-              >
-                Next
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                variant="ink"
-                caps
-                loading={create.isPending}
-              >
-                Create draft
-              </Button>
-            )}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function WizardStepIndicator({ step, onJump }: { step: number; onJump: (n: number) => void }) {
-  return (
-    <nav aria-label="Wizard steps" className="mb-1 flex items-center gap-1.5 overflow-x-auto pb-2">
-      {WIZARD_STEPS.map((label, i) => {
-        const state = i < step ? 'done' : i === step ? 'active' : 'pending';
-        const reachable = i <= step;
-        return (
-          <button
-            key={label}
-            type="button"
-            disabled={!reachable}
-            onClick={() => onJump(i)}
-            className={
-              'group flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] transition-colors ' +
-              (state === 'active'
-                ? 'border-ink bg-ink text-bg'
-                : state === 'done'
-                  ? 'border-line bg-bg text-ink-2 hover:border-line-2 cursor-pointer'
-                  : 'border-line bg-bg-2 text-ink-4 cursor-not-allowed')
-            }
-          >
-            <span
-              className={
-                'grid size-4 place-items-center rounded-full text-[10px] font-mono ' +
-                (state === 'active' ? 'bg-bg text-ink' : state === 'done' ? 'bg-accent text-accent-fg' : 'bg-bg-3 text-ink-4')
-              }
-            >
-              {state === 'done' ? <Check className="size-2.5" /> : i + 1}
-            </span>
-            <span>{label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
-function OccasionChipPicker({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
-  const toggle = (occ: string) => {
-    const has = value.includes(occ);
-    if (has) onChange(value.filter((v) => v !== occ));
-    else if (value.length < 10) onChange([...value, occ]);
-    else toast.error('At most 10 occasions allowed');
-  };
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {OCCASION_PRESETS.map((occ) => {
-        const selected = value.includes(occ);
-        return (
-          <button
-            key={occ}
-            type="button"
-            onClick={() => toggle(occ)}
-            className={
-              'rounded-full border px-3 py-1 text-[12px] capitalize transition-colors ' +
-              (selected
-                ? 'border-accent bg-accent text-accent-fg'
-                : 'border-line bg-bg text-ink-2 hover:border-line-2')
-            }
-          >
-            {occ}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-type WizardSnapshot = {
-  name?: string | undefined;
-  description?: string | undefined;
-  brandId?: string | undefined;
-  categoryId?: string | undefined;
-  gender?: CreateValues['gender'] | undefined;
-  badge?: CreateValues['badge'] | undefined;
-  occasion?: string[] | undefined;
-  ageGroup?: CreateValues['ageGroup'] | undefined;
-  listingPolicy?: CreateValues['listingPolicy'] | undefined;
-  hsn?: string | undefined;
-  templateId?: string | undefined;
-};
-
-function ReviewSummary({
-  values,
-  brandLabel,
-  categoryLabel,
-  templateLabel,
-  onEdit,
-}: {
-  values: WizardSnapshot;
-  brandLabel: string;
-  categoryLabel: string;
-  templateLabel: string;
-  onEdit: (n: number) => void;
-}) {
-  const rows: Array<{ label: string; value: React.ReactNode; step: number }> = [
-    { label: 'Name', value: values.name || '—', step: 0 },
-    { label: 'Brand', value: brandLabel, step: 0 },
-    { label: 'Category', value: categoryLabel, step: 0 },
-    { label: 'Cut for', value: <span className="capitalize">{values.gender ?? '—'}</span>, step: 0 },
-    { label: 'Description', value: values.description?.trim() || <span className="text-ink-3 italic">none</span>, step: 1 },
-    { label: 'Badge', value: <span className="capitalize">{values.badge ?? 'none'}</span>, step: 1 },
-    {
-      label: 'Age group',
-      value: values.ageGroup ? AGE_GROUP_LABEL[values.ageGroup] : <span className="text-ink-3 italic">unspecified</span>,
-      step: 1,
-    },
-    {
-      label: 'Occasion',
-      value: (values.occasion?.length ?? 0) > 0
-        ? <span className="capitalize">{values.occasion!.join(', ')}</span>
-        : <span className="text-ink-3 italic">none</span>,
-      step: 1,
-    },
-    { label: 'Template', value: templateLabel, step: 2 },
-    { label: 'Return policy', value: POLICY_LABEL[(values.listingPolicy ?? 'return') as CreateValues['listingPolicy']], step: 3 },
-    { label: 'HSN', value: values.hsn?.trim() || <span className="text-ink-3 italic">none</span>, step: 3 },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <p className="text-[13px] text-ink-2 leading-relaxed">
-        Check everything looks right. <em>Create draft</em> will save this product as a draft. You'll add variants
-        and gallery images on the next screen before publishing.
-      </p>
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-xs border border-rule bg-paper-2/40 p-4 sm:grid-cols-2">
-        {rows.map(({ label, value, step }) => (
-          <div key={label} className="flex items-start justify-between gap-3 border-b border-rule/60 pb-2 last:border-b-0">
-            <div className="min-w-0">
-              <dt className="kicker text-ink-3">{label}</dt>
-              <dd className="mt-0.5 break-words text-[13px] text-ink">{value}</dd>
-            </div>
-            <button
-              type="button"
-              onClick={() => onEdit(step)}
-              className="shrink-0 text-[11px] underline text-ink-3 hover:text-ink"
-            >
-              Edit
-            </button>
-          </div>
-        ))}
-      </dl>
-    </div>
   );
 }

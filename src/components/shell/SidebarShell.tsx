@@ -1,10 +1,11 @@
 import { useEffect, useState, type ComponentType, type ReactElement } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { ChevronsLeft, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { AccountMenu, AccountsPanel } from './AccountMenu';
 import { BannerStack } from './BannerStack';
 import { NotificationsBell } from './NotificationsBell';
+import { CommandPalette } from './CommandPalette';
 
 export type SidebarItem = {
   to: string;
@@ -15,6 +16,16 @@ export type SidebarItem = {
   /** Optional permission action key. When supplied, the layout hides this item
    *  whenever the active session's permission map says the action is not granted. */
   action?: string;
+  /** Optional set of permission action keys; the item shows if ANY is granted.
+   *  Use for merged/hub entries that front several gated sub-views. */
+  anyAction?: string[];
+  /** Optional count bubble (e.g. pending disputes). Hidden when 0/undefined. */
+  badge?: number;
+  /**
+   * Custom active-state test. Needed when two items share a pathname but differ
+   * by query (NavLink ignores search), e.g. Issues vs Disputes on /admin/issues.
+   */
+  activeWhen?: (loc: { pathname: string; search: string }) => boolean;
 };
 
 export type SidebarGroup = {
@@ -31,7 +42,11 @@ export function filterSidebarGroups(
   if (!permissions) return groups;
   const out: SidebarGroup[] = [];
   for (const g of groups) {
-    const items = g.items.filter((it) => !it.action || permissions[it.action] === true);
+    const items = g.items.filter((it) => {
+      if (it.action) return permissions[it.action] === true;
+      if (it.anyAction) return it.anyAction.some((a) => permissions[a] === true);
+      return true;
+    });
     if (items.length > 0) out.push({ ...g, items });
   }
   return out;
@@ -44,6 +59,8 @@ type SidebarShellProps = {
   searchHint?: string;
   /** Optional element shown inside the dark sidebar footer (e.g. AI quota chip). */
   sidebarFooter?: ComponentType | ReactElement;
+  /** Scope hint for the Cmd+K palette to choose which entity search to run. */
+  paletteScope?: 'admin' | 'retailer';
 };
 
 const STORAGE_KEY = 'trendzo.sidebar.collapsed';
@@ -54,17 +71,30 @@ const STORAGE_KEY = 'trendzo.sidebar.collapsed';
  * column (top-bar + page outlet). Sidebar collapses to icon-only on desktop;
  * on mobile it opens as a slide-over drawer.
  */
-export function SidebarShell({ kindLabel, groups, searchHint, sidebarFooter }: SidebarShellProps) {
+export function SidebarShell({ kindLabel, groups, searchHint, sidebarFooter, paletteScope = 'admin' }: SidebarShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(STORAGE_KEY) === '1';
   });
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
@@ -113,7 +143,7 @@ export function SidebarShell({ kindLabel, groups, searchHint, sidebarFooter }: S
                 'hidden md:flex h-10 items-center gap-2 rounded-full bg-bg-3 ' +
                   'px-4 text-[13.5px] text-ink-3 hover:bg-bg-4 transition-colors min-w-[300px] press',
               )}
-              onClick={() => {/* TODO: command palette */}}
+              onClick={() => setPaletteOpen(true)}
             >
               <Search className="size-4 text-ink-4" />
               <span className="flex-1 text-left">{searchHint}</span>
@@ -141,6 +171,13 @@ export function SidebarShell({ kindLabel, groups, searchHint, sidebarFooter }: S
           onClose={() => setMobileOpen(false)}
         />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        groups={groups}
+        scope={paletteScope}
+      />
     </div>
   );
 }
@@ -224,23 +261,34 @@ function SidebarBody({ groups, collapsed }: { groups: SidebarGroup[]; collapsed:
 
 function SidebarItemRow({ item, collapsed }: { item: SidebarItem; collapsed: boolean }) {
   const Icon = item.icon;
+  const loc = useLocation();
   return (
     <NavLink
       to={item.to}
       end={item.end ?? false}
       title={collapsed ? item.label : undefined}
-      className={({ isActive }) =>
-        cn(
+      className={({ isActive }) => {
+        const active = item.activeWhen ? item.activeWhen(loc) : isActive;
+        return cn(
           'group relative flex items-center gap-3 rounded-lg text-[13.5px] font-medium transition-colors press',
           collapsed ? 'h-10 justify-center px-0' : 'h-9 px-3',
-          isActive
-            ? 'bg-bg text-ink shadow-xs'
-            : 'text-bg/70 hover:bg-bg/10 hover:text-bg',
-        )
-      }
+          active ? 'bg-bg text-ink shadow-xs' : 'text-bg/70 hover:bg-bg/10 hover:text-bg',
+        );
+      }}
     >
       {Icon && <Icon className="size-[16px] shrink-0" />}
       {!collapsed && <span className="truncate">{item.label}</span>}
+      {item.badge != null && item.badge > 0 && (
+        <span
+          className={cn(
+            'grid min-w-[18px] place-items-center rounded-full bg-danger px-1.5 text-[10px] font-semibold leading-none text-white',
+            collapsed ? 'absolute right-1 top-1 h-4' : 'ml-auto h-[18px]',
+          )}
+          aria-label={`${item.badge} pending`}
+        >
+          {item.badge > 99 ? '99+' : item.badge}
+        </span>
+      )}
     </NavLink>
   );
 }
@@ -298,6 +346,11 @@ function MobileDrawer({
                       >
                         {Icon && <Icon className="size-4" />}
                         <span>{item.label}</span>
+                        {item.badge != null && item.badge > 0 && (
+                          <span className="ml-auto grid h-[18px] min-w-[18px] place-items-center rounded-full bg-danger px-1.5 text-[10px] font-semibold leading-none text-white">
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </span>
+                        )}
                       </NavLink>
                     </li>
                   );

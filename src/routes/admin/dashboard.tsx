@@ -23,7 +23,7 @@ import {
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { retailerStatusMeta } from '@/lib/status';
-import type { AdminRetailerView, Store as StoreT } from '@/lib/types';
+import type { AdminPayoutRow, AdminRetailerView, KycReverification, Store as StoreT } from '@/lib/types';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -68,6 +68,16 @@ export default function AdminDashboard() {
     queryKey: ['admin', 'stores', 'active'],
     queryFn: () => api<StoreT[]>('/admin/stores?status=active'),
   });
+  const failedPayouts = useQuery({
+    queryKey: ['admin', 'payouts-pipeline'],
+    queryFn: () => api<AdminPayoutRow[]>('/admin/payouts'),
+    select: (rows) => rows.filter((p) => p.status === 'failed'),
+  });
+  const overdueKyc = useQuery({
+    queryKey: ['admin', 'compliance', 'kyc'],
+    queryFn: () => api<KycReverification[]>('/admin/compliance/kyc'),
+    select: (rows) => rows.filter((k) => new Date(k.dueAt).getTime() < Date.now()),
+  });
 
   const oldestRetailerAge = ageOfOldest(pendingRetailers.data, 'createdAt');
   const firstName = admin?.email.split('@')[0] ?? 'there';
@@ -95,8 +105,8 @@ export default function AdminDashboard() {
         description="Here's the live state of the marketplace — review what's waiting and triage from one place."
       />
 
-      {/* KPI strip — featured dark card on the left, secondary cards beside */}
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      {/* Hero KPI strip — actionable: things that drive immediate action. */}
+      <div className="grid gap-4 md:grid-cols-3 mb-4">
         <FeaturedKpi
           icon={<Inbox className="size-4" />}
           label="Pending applications"
@@ -104,15 +114,42 @@ export default function AdminDashboard() {
           loading={pendingRetailers.isLoading}
           deltaText={oldestRetailerAge ? `Oldest ${oldestRetailerAge}` : 'All clear'}
           deltaTone={oldestRetailerAge ? 'danger' : 'success'}
-          to="/admin/retailers"
+          to="/admin/compliance?tab=applications"
+          cta="Review"
         />
+        <FeaturedKpi
+          icon={<Wallet className="size-4" />}
+          label="Failed payouts"
+          value={failedPayouts.data?.length}
+          loading={failedPayouts.isLoading}
+          deltaText={(failedPayouts.data?.length ?? 0) > 0 ? 'Retry from pipeline' : 'All clear'}
+          deltaTone={(failedPayouts.data?.length ?? 0) > 0 ? 'danger' : 'success'}
+          to="/admin/payouts-pipeline"
+          cta="Retry"
+          variant="warning"
+        />
+        <FeaturedKpi
+          icon={<ShieldAlert className="size-4" />}
+          label="Overdue KYC"
+          value={overdueKyc.data?.length}
+          loading={overdueKyc.isLoading}
+          deltaText={(overdueKyc.data?.length ?? 0) > 0 ? 'Past due date' : 'All clear'}
+          deltaTone={(overdueKyc.data?.length ?? 0) > 0 ? 'danger' : 'success'}
+          to="/admin/compliance"
+          cta="Review"
+          variant="warning"
+        />
+      </div>
+
+      {/* Secondary KPI strip — informational: roll-up state. */}
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
         <Kpi
           icon={<Users className="size-4" />}
           label="Active retailers"
           value={activeRetailerCount}
           loading={activeRetailers.isLoading}
           delta={changePctish(activeRetailers.data?.length, pendingRetailers.data?.length)}
-          to="/admin/retailers"
+          to="/admin/users?tab=retailers"
         />
         <Kpi
           icon={<Store className="size-4" />}
@@ -120,6 +157,13 @@ export default function AdminDashboard() {
           value={activeStoreCount}
           loading={activeStores.isLoading}
           delta={changePctish(activeStores.data?.length, onboardingStores.data?.length)}
+          to="/admin/stores"
+        />
+        <Kpi
+          icon={<Clock className="size-4" />}
+          label="Onboarding stores"
+          value={onboardingStores.data?.length}
+          loading={onboardingStores.isLoading}
           to="/admin/stores"
         />
       </div>
@@ -153,8 +197,8 @@ export default function AdminDashboard() {
 function MarketplaceKpiStrip() {
   // MOCK_DEPENDENCY: §21 — wire to /admin/reports/marketplace-kpis
   const kpis: { label: string; value: string; tone: 'success' | 'danger' | 'neutral'; delta: string; icon: React.ReactNode }[] = [
-    { label: 'GMV (today)', value: '₹38.4L', tone: 'success', delta: '+12.4% wow', icon: <IndianRupee className="size-4" /> },
-    { label: 'Take-rate', value: '14.2%', tone: 'neutral', delta: 'Floor 12%', icon: <BadgePercent className="size-4" /> },
+    { label: 'Total sales (today)', value: '₹38.4L', tone: 'success', delta: '+12.4% vs last wk', icon: <IndianRupee className="size-4" /> },
+    { label: 'Platform fee', value: '14.2%', tone: 'neutral', delta: 'Min 12%', icon: <BadgePercent className="size-4" /> },
     { label: 'Dispute-rate', value: '1.8%', tone: 'success', delta: '-0.3pt wow', icon: <ShieldAlert className="size-4" /> },
     { label: 'Refund-rate', value: '4.1%', tone: 'danger', delta: '+0.6pt wow', icon: <RotateCcw className="size-4" /> },
     { label: 'Payout volume (24h)', value: '₹61.2L', tone: 'neutral', delta: '7 failed', icon: <Wallet className="size-4" /> },
@@ -195,7 +239,7 @@ function CohortsCard() {
     <section className="surface-card mb-6 p-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-[15px] font-semibold text-ink">Retailer cohorts</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Retailer retention</h2>
           <p className="text-[12.5px] text-ink-3">Active-retailer retention by signup month.</p>
         </div>
         <Link to="/admin/reports/leaderboard" className="text-[12px] text-ink-3 hover:text-ink">View leaderboard →</Link>
@@ -204,7 +248,7 @@ function CohortsCard() {
         <table className="w-full text-[12.5px]">
           <thead className="text-ink-3">
             <tr className="border-b border-line">
-              <th className="px-3 py-2 text-left font-medium">Cohort</th>
+              <th className="px-3 py-2 text-left font-medium">Signed up</th>
               <th className="px-3 py-2 text-right font-medium">Size</th>
               <th className="px-3 py-2 text-right font-medium">M+1</th>
               <th className="px-3 py-2 text-right font-medium">M+2</th>
@@ -238,6 +282,8 @@ function FeaturedKpi({
   deltaText,
   deltaTone,
   to,
+  cta,
+  variant = 'default',
 }: {
   icon: React.ReactNode;
   label: string;
@@ -246,11 +292,19 @@ function FeaturedKpi({
   deltaText?: string;
   deltaTone: 'success' | 'danger';
   to: string;
+  cta?: string;
+  variant?: 'default' | 'warning';
 }) {
+  const surface = variant === 'warning'
+    ? 'bg-gradient-to-br from-[#3a1a09] to-[#2a1206] text-bg'
+    : 'bg-ink text-bg';
   return (
     <Link
       to={to}
-      className="group relative overflow-hidden rounded-2xl bg-ink p-6 text-bg shadow-card transition-transform press"
+      className={cn(
+        'group relative overflow-hidden rounded-2xl p-6 shadow-card transition-transform press',
+        surface,
+      )}
     >
       <div className="absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle_at_20%_20%,white_1px,transparent_1px)] [background-size:20px_20px]" />
       <div className="relative flex flex-col gap-5">
@@ -279,7 +333,10 @@ function FeaturedKpi({
             <Clock className="size-3" />
             {deltaText}
           </span>
-          <ArrowUpRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          <span className="inline-flex items-center gap-1 text-bg/90 group-hover:text-bg">
+            {cta ?? 'Open'}
+            <ArrowUpRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </span>
         </div>
       </div>
     </Link>
@@ -383,7 +440,7 @@ function TopRetailersCard({ retailers, loading }: { retailers: AdminRetailerView
     <section className="surface-card p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[15px] font-semibold text-ink">Top retailers</h2>
-        <Link to="/admin/retailers" className="text-[12px] text-ink-3 hover:text-ink">View all →</Link>
+        <Link to="/admin/users?tab=retailers" className="text-[12px] text-ink-3 hover:text-ink">View all →</Link>
       </div>
 
       {loading ? (

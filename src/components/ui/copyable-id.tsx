@@ -11,10 +11,13 @@ export function CopyableId({
   value,
   label,
   className,
+  full = false,
 }: {
   value: string;
   label?: string;
   className?: string;
+  /** Show the whole id (no middle truncation). Default truncates at 140px. */
+  full?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -40,7 +43,7 @@ export function CopyableId({
         className,
       )}
     >
-      <span className="truncate max-w-[140px]">{value}</span>
+      <span className={full ? 'break-all' : 'truncate max-w-[140px]'}>{value}</span>
       {copied ? (
         <Check className="size-3 text-success shrink-0" />
       ) : (

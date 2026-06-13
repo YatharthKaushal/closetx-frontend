@@ -10,7 +10,8 @@ import { Empty } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyableId } from '@/components/ui/copyable-id';
 
-export default function RetailerCommissionInvoices() {
+/** Body-only renderer (see TaxInvoicesBody for the rationale). */
+export function CommissionInvoicesBody() {
   const { data, isLoading } = useQuery({
     queryKey: ['retailer', 'commission-invoices'],
     queryFn: () => api<TaxInvoice[]>('/retailer/invoices?kind=commission'),
@@ -18,12 +19,7 @@ export default function RetailerCommissionInvoices() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Commission invoices"
-        description="Trendzo issues a commission invoice per order. Each is GST-compliant and feeds your monthly billing statement."
-      />
+    <>
       {isLoading ? <Skeleton className="h-32" /> : list.length === 0 ? (
         <Empty kicker="None" title="No commission invoices yet." />
       ) : (
@@ -67,6 +63,19 @@ export default function RetailerCommissionInvoices() {
           </CardContent>
         </Card>
       )}
+    </>
+  );
+}
+
+export default function RetailerCommissionInvoices() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Settlement"
+        title="Commission invoices"
+        description="Trendzo issues a commission invoice per order. Each is GST-compliant and feeds your monthly billing statement."
+      />
+      <CommissionInvoicesBody />
     </Page>
   );
 }

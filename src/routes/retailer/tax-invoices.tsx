@@ -20,7 +20,13 @@ const KIND_TONE: Record<TaxInvoiceKind, 'info' | 'warning' | 'neutral'> = {
   commission: 'neutral',
 };
 
-export default function RetailerTaxInvoices() {
+/**
+ * Body-only renderer. Used both as the standalone Tax invoices page and as a
+ * tab panel inside the merged `/retailer/invoices` hub. The page header /
+ * Page wrapper lives in the default-export route component below so the hub
+ * can supply its own header without nesting two of them.
+ */
+export function TaxInvoicesBody() {
   const [params] = useSearchParams();
   const initialOrderId = params.get('orderId') ?? '';
   const [q, setQ] = useState(initialOrderId);
@@ -43,13 +49,7 @@ export default function RetailerTaxInvoices() {
   }, [all, q]);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Invoicing"
-        title="Tax invoices"
-        description="Every consumer-facing tax invoice issued for your orders. Supplementary invoices link back to the original."
-      />
-
+    <>
       <div className="mb-4 relative max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-3" />
         <Input
@@ -74,6 +74,19 @@ export default function RetailerTaxInvoices() {
           </TabsContent>
         ))}
       </Tabs>
+    </>
+  );
+}
+
+export default function RetailerTaxInvoices() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Invoicing"
+        title="Tax invoices"
+        description="Every consumer-facing tax invoice issued for your orders. Supplementary invoices link back to the original."
+      />
+      <TaxInvoicesBody />
     </Page>
   );
 }

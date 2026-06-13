@@ -4,7 +4,7 @@ import { Plus, Receipt, RefreshCw, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatPaise } from '@/lib/status';
 import type { PricingBreakdown, Promotion } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,7 +32,7 @@ type LineState = {
   gstRatePct: number;
 };
 
-export default function AdminPromotionPreview() {
+export function PricingSimulatorPanel() {
   const [lines, setLines] = useState<LineState[]>([
     { lineId: 'L1', listingId: 'lst-x', variantId: 'var-x', unitPricePaise: 100000, qty: 1, gstRatePct: 5 },
   ]);
@@ -110,11 +110,11 @@ export default function AdminPromotionPreview() {
   }, [inputs]);
 
   return (
-    <Page>
-      <PageHeader
-        title={<>Pricing simulator</>}
-        description="Build a hypothetical cart and watch the engine apply promotions, loyalty, taxes, and delivery in real time. The output matches what checkout will compute."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Build a hypothetical cart and watch the engine apply promotions, loyalty, taxes, and
+        delivery in real time. The output matches what checkout will compute.
+      </p>
 
       <div className="grid gap-12 lg:grid-cols-12">
         <section className="lg:col-span-7 space-y-7">
@@ -282,7 +282,7 @@ export default function AdminPromotionPreview() {
           <BreakdownPanel data={simulate.data} loading={simulate.isPending} error={simulate.error} />
         </aside>
       </div>
-    </Page>
+    </div>
   );
 
   function updateLine(i: number, patch: Partial<LineState>) {

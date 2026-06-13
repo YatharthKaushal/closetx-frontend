@@ -13,6 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range-picker';
 import { Empty } from '@/components/ui/empty';
 import { FreshnessLabel } from '@/components/ui/freshness-label';
+import { HBarChart } from '@/components/ui/hbar-chart';
+import { ViewToggle, type ReportView } from '@/components/ui/view-toggle';
 
 type Row = {
   listingId: string;
@@ -22,9 +24,11 @@ type Row = {
   grossPaise: number;
 };
 
-export default function ReportListingRevenue() {
+/** Listing revenue — ranked gross-revenue bars per listing. */
+export function ListingRevenuePanel() {
   const scope = useStoreScope();
   const [range, setRange] = useState<DateRangeValue>({ from: null, to: null });
+  const [view, setView] = useState<ReportView>('chart');
 
   const params = useMemo(() => {
     const p: Record<string, string> = { limit: '50' };
@@ -43,29 +47,41 @@ export default function ReportListingRevenue() {
   const exportCsv = useServerCsv('listing_revenue', path, params);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Reports"
-        title="Per-listing revenue"
-        description="Top listings by gross revenue in the selected window. Spot under-performers vs. impressions."
-        actions={
-          <>
-            <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
-            <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
-              Export CSV
-            </Button>
-          </>
-        }
-      />
-
-      <div className="mb-4 max-w-md">
-        <DateRangePicker value={range} onChange={setRange} placeholder="Last 30 days" />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="w-full max-w-xs">
+          <DateRangePicker value={range} onChange={setRange} placeholder="Last 30 days" />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
+          <ViewToggle value={view} onChange={setView} />
+          <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
+            CSV
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <Skeleton className="h-40" />
       ) : rows.length === 0 ? (
         <Empty kicker="No sales" title="No listings sold in this window." />
+      ) : view === 'chart' ? (
+        <Card>
+          <CardContent className="p-5">
+            <div className="kicker mb-3">Gross revenue by listing (top {Math.min(rows.length, 20)})</div>
+            <HBarChart
+              rows={[...rows]
+                .sort((a, b) => b.grossPaise - a.grossPaise)
+                .slice(0, 20)
+                .map((r) => ({
+                  label: r.listingName,
+                  value: r.grossPaise,
+                  display: formatPaise(r.grossPaise),
+                  sub: `${r.itemsSold} items · ${r.ordersCount} orders`,
+                }))}
+            />
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -92,6 +108,20 @@ export default function ReportListingRevenue() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Standalone page wrapper — kept for the admin store-scoped report routes. */
+export default function ReportListingRevenue() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Analytics"
+        title="Per-listing revenue"
+        description="Top listings by gross revenue in the selected window. Spot under-performers vs. impressions."
+      />
+      <ListingRevenuePanel />
     </Page>
   );
 }

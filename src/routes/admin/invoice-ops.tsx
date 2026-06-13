@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileText, Receipt } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,21 +15,20 @@ import { Label, FieldError } from '@/components/ui/label';
  *  - Issue credit note against a refund.
  *  - Manual tax-invoice issuance (covered here for completeness).
  */
-export default function AdminInvoiceOps() {
+export function InvoiceOpsPanel() {
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Invoice operations"
-        description="Manual issuance and corrections — commission invoices, credit notes, and one-off tax invoices."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Create or fix invoices by hand — platform-fee invoices, credit notes, and one-off tax
+        invoices.
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ReissueCommissionCard />
         <CreditNoteCard />
         <TaxInvoiceCard />
       </div>
-    </Page>
+    </div>
   );
 }
 
@@ -53,9 +52,9 @@ function ReissueCommissionCard() {
   return (
     <Card>
       <CardContent className="p-6">
-        <SectionHeading kicker="Commission" title="Re-issue commission invoice" hint={<Receipt className="size-4 text-ink-3" />} />
+        <SectionHeading kicker="Platform fee" title="Re-issue platform-fee invoice" hint={<Receipt className="size-4 text-ink-3" />} />
         <p className="mb-3 text-[12.5px] text-ink-3">
-          Use after a fee or commission correction on an order. Existing invoice is voided; new one issued with updated amounts.
+          Use after correcting a fee on an order. The old invoice is cancelled and a new one is created with the updated amounts.
         </p>
         <form
           className="space-y-3"
@@ -166,7 +165,7 @@ function TaxInvoiceCard() {
       <CardContent className="p-6">
         <SectionHeading kicker="Tax invoice" title="Manual issuance" hint={<Receipt className="size-4 text-ink-3" />} />
         <p className="mb-3 text-[12.5px] text-ink-3">
-          One-off tax or supplementary invoice issuance — typically used when the automated pipeline missed a held item.
+          Create a one-off or extra tax invoice — usually when the system missed an item that was held.
         </p>
         <form
           className="space-y-3"
@@ -189,7 +188,7 @@ function TaxInvoiceCard() {
                 Tax invoice
               </Button>
               <Button type="button" variant={kind === 'supplementary_invoice' ? 'ink' : 'outline'} size="sm" onClick={() => setKind('supplementary_invoice')}>
-                Supplementary
+                Extra
               </Button>
             </div>
           </div>

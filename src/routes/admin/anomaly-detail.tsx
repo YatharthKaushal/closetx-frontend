@@ -52,7 +52,7 @@ export default function AdminAnomalyDetail() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="p-6">
-            <SectionHeading kicker="Signal" title="What tripped" />
+            <SectionHeading kicker="Why flagged" title="What we noticed" />
             <MetaList
               cols={1}
               items={[

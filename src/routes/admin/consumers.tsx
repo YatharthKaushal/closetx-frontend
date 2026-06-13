@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { consumerStatusMeta } from '@/lib/status';
 import type { ConsumerStatus, ConsumerSummary } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Empty } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -36,12 +35,14 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: ConsumerStatus | 'all'; label: stri
   { value: 'closed', label: 'Closed' },
 ];
 
-export default function AdminConsumers() {
+export function ConsumersPanel() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<ConsumerStatus | 'all'>('all');
   const [signupRange, setSignupRange] = useState<'all' | '7d' | '30d' | '90d'>('all');
   const [banFilter, setBanFilter] = useState<'all' | 'community' | 'reviews' | 'rewards'>('all');
-  const [submitted, setSubmitted] = useState<{ q?: string; status?: ConsumerStatus } | null>(null);
+  // Load the full directory on mount (empty filter) instead of gating behind a
+  // search — admins expect to see all consumers when they open the tab.
+  const [submitted, setSubmitted] = useState<{ q?: string; status?: ConsumerStatus } | null>({});
 
   const { data, isFetching } = useQuery({
     queryKey: ['admin', 'consumers', submitted],
@@ -72,12 +73,14 @@ export default function AdminConsumers() {
   }
 
   return (
-    <Page>
-      <PageHeader
-        title={<>Consumers</>}
-        description="Search by name, email, or phone. Click a row to view the full profile, wallet, loyalty, and account actions."
-        actions={<NewConsumerButton onCreated={() => setSubmitted({})} />}
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Search by name, email, or phone. Click a row to view the full profile, wallet, loyalty,
+          and account actions.
+        </p>
+        <NewConsumerButton onCreated={() => setSubmitted({})} />
+      </div>
 
       <form onSubmit={onSubmit} className="mb-6 flex flex-wrap items-end gap-3 border-b border-rule pb-4">
         <div className="relative flex-1 min-w-48">
@@ -168,7 +171,7 @@ export default function AdminConsumers() {
           })}
         </ul>
       )}
-    </Page>
+    </div>
   );
 }
 

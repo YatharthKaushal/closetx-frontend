@@ -4,14 +4,13 @@ import { ArrowUpRight, Download } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatPaise } from '@/lib/status';
 import type { TailOfCycleRow } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export default function AdminTailOfCycle() {
+export function LeftoversPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'tail-of-cycle'],
     queryFn: () => api<TailOfCycleRow[]>('/admin/tail-of-cycle'),
@@ -20,21 +19,22 @@ export default function AdminTailOfCycle() {
   const total = list.reduce((n, r) => n + r.unreconciledPaise, 0);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Tail of cycle"
-        description="Unreconciled payout amounts at end of cycle. Investigate the reason hints, then re-trigger reconciliation per row."
-        actions={<Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />}>Export CSV</Button>}
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+          Amounts left over at the end of a payout cycle that haven't been matched to the bank yet.
+          Check the hints for why, then re-run the matching on each row.
+        </p>
+        <Button variant="outline" size="sm" className="shrink-0" iconLeft={<Download className="size-3.5" />}>Export CSV</Button>
+      </div>
 
       <div className="mb-4 inline-flex items-center gap-2 rounded-md border border-warning/40 bg-warning-soft/40 px-3 py-2">
-        <span className="text-[12px] uppercase tracking-wide font-semibold text-warning">Total unreconciled</span>
+        <span className="text-[12px] uppercase tracking-wide font-semibold text-warning">Total not yet matched</span>
         <span className="font-mono text-[14px] text-ink">{formatPaise(total)}</span>
       </div>
 
       {isLoading ? <Skeleton className="h-32" /> : list.length === 0 ? (
-        <Empty kicker="All clear" title="Nothing unreconciled." />
+        <Empty kicker="All clear" title="Nothing left to match." />
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -43,7 +43,7 @@ export default function AdminTailOfCycle() {
                 <tr>
                   <th className="px-3 py-2 text-left font-medium text-ink-3">Store</th>
                   <th className="px-3 py-2 text-left font-medium text-ink-3">Period</th>
-                  <th className="px-3 py-2 text-right font-medium text-ink-3">Unreconciled</th>
+                  <th className="px-3 py-2 text-right font-medium text-ink-3">Not yet matched</th>
                   <th className="px-3 py-2 text-left font-medium text-ink-3">Hints</th>
                   <th className="px-3 py-2"></th>
                 </tr>
@@ -61,7 +61,7 @@ export default function AdminTailOfCycle() {
                     </td>
                     <td className="px-3 py-1.5 text-right">
                       <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
-                        <Link to={`/admin/payouts-pipeline?storeId=${r.storeId}&period=${r.period}`}>Investigate</Link>
+                        <Link to={`/admin/money?tab=payouts&storeId=${r.storeId}&period=${r.period}`}>Investigate</Link>
                       </Button>
                     </td>
                   </tr>
@@ -71,6 +71,6 @@ export default function AdminTailOfCycle() {
           </CardContent>
         </Card>
       )}
-    </Page>
+    </div>
   );
 }

@@ -5,7 +5,6 @@ import { ArrowUpRight, ExternalLink, FileEdit } from 'lucide-react';
 import { api } from '@/lib/api';
 import { changeRequestStatusMeta, formatAge } from '@/lib/status';
 import type { ChangeRequest, ChangeRequestStatus } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,7 +43,7 @@ function summariseValue(field: ChangeRequest['field'], raw: string): string {
   }
 }
 
-export default function AdminChangeRequests() {
+export function ChangeRequestsPanel() {
   const [filter, setFilter] = useState<Filter>('pending');
 
   const { data, isLoading } = useQuery({
@@ -59,12 +58,11 @@ export default function AdminChangeRequests() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Compliance"
-        title="Change requests"
-        description="Verified-field changes (legal name, address, bank, GSTIN). Approve to apply the new value atomically; reject leaves the store row untouched."
-      />
+    <div>
+      <p className="mb-3 max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+        Verified-field changes (legal name, address, bank, GSTIN). Approve to apply the new value
+        atomically; reject leaves the store row untouched.
+      </p>
 
       <div className="mb-4">
         <Segmented
@@ -137,6 +135,6 @@ export default function AdminChangeRequests() {
           })}
         </ul>
       )}
-    </Page>
+    </div>
   );
 }

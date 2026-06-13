@@ -69,7 +69,7 @@ export default function RetailerPayoutDetail() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="p-6">
-            <SectionHeading kicker="Bank" title="Disbursal channel" />
+            <SectionHeading kicker="Bank" title="Paid to" />
             <MetaList
               cols={1}
               items={[
@@ -92,9 +92,9 @@ export default function RetailerPayoutDetail() {
                 <Row label="Platform commission" amount={-deductions.breakdown.commissionPaise} />
                 <Row label="Commission GST" amount={-deductions.breakdown.commissionTaxPaise} />
                 <Row label="TCS" amount={-deductions.breakdown.tcsPaise} />
-                <Row label="Refunds held" amount={-deductions.breakdown.refundsHeldPaise} />
-                <Row label="Prior over-payouts" amount={-deductions.breakdown.priorOverPayoutsPaise} />
-                <Row label="Dispute holds" amount={-deductions.breakdown.disputeHoldPaise} />
+                <Row label="Refunds held back" amount={-deductions.breakdown.refundsHeldPaise} />
+                <Row label="Money overpaid earlier" amount={-deductions.breakdown.priorOverPayoutsPaise} />
+                <Row label="Money held for disputes" amount={-deductions.breakdown.disputeHoldPaise} />
                 <Row label="Adjustments" amount={deductions.breakdown.adjustmentsPaise} />
                 <li className="flex items-center justify-between py-2 text-[13px] font-semibold">
                   <span className="text-ink">Net payout</span>
@@ -110,7 +110,7 @@ export default function RetailerPayoutDetail() {
         {deductions && deductions.holds.length > 0 && (
           <Card className="lg:col-span-2">
             <CardContent className="p-6">
-              <SectionHeading kicker="Holds" title="Dispute holds on this cycle" />
+              <SectionHeading kicker="Held" title="Money held for disputes this payout" />
               <table className="w-full text-[12.5px]">
                 <thead className="bg-bg-2/40">
                   <tr>
@@ -142,7 +142,7 @@ export default function RetailerPayoutDetail() {
               <table className="w-full text-[12.5px]">
                 <thead className="bg-bg-2/40">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-ink-3">Direction</th>
+                    <th className="px-3 py-2 text-left font-medium text-ink-3">Type</th>
                     <th className="px-3 py-2 text-right font-medium text-ink-3">Amount</th>
                     <th className="px-3 py-2 text-left font-medium text-ink-3">Reason</th>
                   </tr>
@@ -151,7 +151,7 @@ export default function RetailerPayoutDetail() {
                   {deductions.adjustments.map((a) => (
                     <tr key={a.id} className="border-t border-line">
                       <td className="px-3 py-2">
-                        <Badge tone={a.direction === 'debit' ? 'danger' : 'success'} flat>{a.direction}</Badge>
+                        <Badge tone={a.direction === 'debit' ? 'danger' : 'success'} flat>{a.direction === 'debit' ? 'Deduction' : 'Credit'}</Badge>
                       </td>
                       <td className="px-3 py-2 text-right font-mono">
                         {a.direction === 'debit' ? '−' : '+'}{formatPaise(a.amountPaise)}
@@ -168,14 +168,14 @@ export default function RetailerPayoutDetail() {
         {deductions && deductions.recoveries.length > 0 && (
           <Card className="lg:col-span-2">
             <CardContent className="p-6">
-              <SectionHeading kicker="Recoveries" title="Prior over-payout recoveries" />
+              <SectionHeading kicker="Recoveries" title="Recovering money overpaid earlier" />
               <table className="w-full text-[12.5px]">
                 <thead className="bg-bg-2/40">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-ink-3">Refund</th>
                     <th className="px-3 py-2 text-left font-medium text-ink-3">Order</th>
                     <th className="px-3 py-2 text-right font-medium text-ink-3">Refunded</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-3">Planned debit</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-3">Planned deduction</th>
                     <th className="px-3 py-2 text-left font-medium text-ink-3">Status</th>
                   </tr>
                 </thead>

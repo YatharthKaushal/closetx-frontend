@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArchiveX, ArrowUpRight, Search } from 'lucide-react';
@@ -20,10 +20,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Th, Td, useSort, sortRows, sortProps } from '@/components/ui/table';
+import { BulkActionBar } from '@/components/admin/bulk-action-bar';
+import { bulkResultToast, runBulk } from '@/components/admin/bulk-result-toast';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 
 type Status = 'all' | 'draft' | 'active' | 'retired' | 'taken_down';
 
 export default function AdminListingsSearch() {
+  const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<Status>('all');
 
@@ -39,6 +44,39 @@ export default function AdminListingsSearch() {
   });
 
   const rows = data ?? [];
+  const { sort, toggle } = useSort<'name' | 'status' | 'rating'>(null);
+  const sorted = sortRows(rows, sort, (r, key) => {
+    if (key === 'name') return r.name;
+    if (key === 'status') return r.status;
+    if (key === 'rating') return r.ratingAvg ?? 0;
+    return null;
+  });
+
+  const retirableRows = useMemo(
+    () => sorted.filter((l) => l.status !== 'retired' && l.status !== 'taken_down'),
+    [sorted],
+  );
+  const bulk = useBulkSelect(retirableRows);
+
+  const bulkRetire = useMutation({
+    mutationFn: (ids: string[]) =>
+      runBulk(
+        ids.map((id) => ({
+          id,
+          run: () =>
+            api(`/admin/catalog/listings/${id}/retire`, { method: 'POST', body: {} }),
+        })),
+      ),
+    onSuccess: (result) => {
+      const byId = new Map(rows.map((l) => [l.id, l.name]));
+      bulkResultToast({
+        result,
+        verb: 'retired',
+        describe: (id) => byId.get(id) ?? id.slice(0, 8),
+      });
+      qc.invalidateQueries({ queryKey: ['admin', 'listings'] });
+    },
+  });
 
   return (
     <Page>
@@ -81,16 +119,38 @@ export default function AdminListingsSearch() {
           <table className="w-full text-[14px]">
             <thead>
               <tr className="border-b border-rule">
-                <Th className="w-[40%]">Listing</Th>
+                <Th className="w-8">
+                  <input
+                    type="checkbox"
+                    className="size-3.5 accent-ink"
+                    checked={bulk.isAllSelected}
+                    onChange={bulk.toggleAll}
+                    aria-label="Select all retirable listings"
+                  />
+                </Th>
+                <Th className="w-[40%]" {...sortProps(sort, 'name', toggle)}>Listing</Th>
                 <Th className="w-[25%]">Store</Th>
-                <Th className="w-[15%]">Status</Th>
-                <Th className="w-[10%] text-right">Rating</Th>
+                <Th className="w-[15%]" {...sortProps(sort, 'status', toggle)}>Status</Th>
+                <Th className="w-[10%] text-right" {...sortProps(sort, 'rating', toggle)}>Rating</Th>
                 <Th className="w-[10%] text-right" />
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
-              {rows.map((l) => (
+              {sorted.map((l) => {
+                const canRetire = l.status !== 'retired' && l.status !== 'taken_down';
+                return (
                 <tr key={l.id} className="hover:bg-surface/40">
+                  <Td>
+                    {canRetire && (
+                      <input
+                        type="checkbox"
+                        className="size-3.5 accent-ink"
+                        checked={bulk.isSelected(l.id)}
+                        onChange={() => bulk.toggle(l.id)}
+                        aria-label={`Select ${l.name}`}
+                      />
+                    )}
+                  </Td>
                   <Td>
                     <div className="font-medium text-ink truncate">{l.name}</div>
                     <div className="mt-0.5 text-[12px] text-ink-3 font-mono">{l.id}</div>
@@ -122,11 +182,27 @@ export default function AdminListingsSearch() {
                     </div>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+      <BulkActionBar
+        selectedCount={bulk.selectedCount}
+        onClear={bulk.clear}
+        actions={[
+          {
+            label: 'Retire selected',
+            danger: true,
+            loading: bulkRetire.isPending,
+            onClick: () => {
+              if (!window.confirm(`Retire ${bulk.selectedCount} listing(s) platform-wide?`)) return;
+              bulkRetire.mutate(bulk.selectedIds, { onSettled: () => bulk.clear() });
+            },
+          },
+        ]}
+      />
     </Page>
   );
 }
@@ -198,9 +274,3 @@ function RetireAction({ listing }: { listing: Listing }) {
   );
 }
 
-function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <th className={'kicker text-ink-3 px-3 py-3 text-left ' + (className ?? '')}>{children}</th>;
-}
-function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <td className={'px-3 py-4 align-top ' + (className ?? '')}>{children}</td>;
-}

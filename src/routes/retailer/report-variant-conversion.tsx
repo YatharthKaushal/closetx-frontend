@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty } from '@/components/ui/empty';
 import { FreshnessLabel } from '@/components/ui/freshness-label';
+import { HBarChart } from '@/components/ui/hbar-chart';
+import { ViewToggle, type ReportView } from '@/components/ui/view-toggle';
 
 type Row = {
   variantId: string;
@@ -28,9 +30,11 @@ type Row = {
 
 function bp(n: number) { return `${(n / 100).toFixed(1)}%`; }
 
-export default function ReportVariantConversion() {
+/** Variant conversion — ranked view → delivered conversion bars per variant. */
+export function VariantConversionPanel() {
   const scope = useStoreScope();
   const [listingId, setListingId] = useState('');
+  const [view, setView] = useState<ReportView>('chart');
   const params = useMemo(() => {
     const p: Record<string, string> = { limit: '100' };
     if (listingId.trim()) p.listingId = listingId.trim();
@@ -46,34 +50,51 @@ export default function ReportVariantConversion() {
   const meta = unwrapMeta(data);
   const exportCsv = useServerCsv('variant_conversion', path, params);
 
-  return (
-    <Page>
-      <PageHeader
-        kicker="Reports"
-        title="Variant conversion"
-        description="Impressions → cart-adds → delivered, per variant. Diagnose drop-offs at size or color level."
-        actions={
-          <>
-            <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
-            <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
-              Export CSV
-            </Button>
-          </>
-        }
-      />
+  // Chart ranks the variants shoppers actually convert on (top 20 by view→delivered).
+  const chartRows = useMemo(
+    () =>
+      [...rows]
+        .sort((a, b) => b.viewToDeliveredBp - a.viewToDeliveredBp)
+        .slice(0, 20)
+        .map((r) => ({
+          label: r.label,
+          value: r.viewToDeliveredBp,
+          display: bp(r.viewToDeliveredBp),
+          sub: `${r.views.toLocaleString('en-IN')} views · ${r.deliveredItems} delivered`,
+        })),
+    [rows],
+  );
 
-      <div className="mb-4 max-w-sm">
-        <Input
-          placeholder="Filter by listing ID (optional)"
-          value={listingId}
-          onChange={(e) => setListingId(e.target.value)}
-        />
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="w-full max-w-sm">
+          <Input
+            placeholder="Filter by listing ID (optional)"
+            value={listingId}
+            onChange={(e) => setListingId(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
+          <ViewToggle value={view} onChange={setView} />
+          <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
+            CSV
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <Skeleton className="h-40" />
       ) : rows.length === 0 ? (
         <Empty kicker="No data" title="No variant events in this window." />
+      ) : view === 'chart' ? (
+        <Card>
+          <CardContent className="p-5">
+            <div className="kicker mb-3">View → delivered conversion (top {chartRows.length})</div>
+            <HBarChart rows={chartRows} color="var(--color-info)" />
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -106,6 +127,20 @@ export default function ReportVariantConversion() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Standalone page wrapper — kept for the admin store-scoped report routes. */
+export default function ReportVariantConversion() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Analytics"
+        title="Variant conversion"
+        description="How many shoppers saw a product, added it to the bag, and received it — per variant. See where they drop off."
+      />
+      <VariantConversionPanel />
     </Page>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -53,12 +53,19 @@ const INDIA_STATES = [
 ];
 
 export default function AdminStores() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const retailerIdFilter = searchParams.get('retailerId');
   const [status, setStatus] = useState<StoreStatus | 'all'>('all');
   const [stateCode, setStateCode] = useState<string>('all');
   const [q, setQ] = useState('');
 
+  // Partition the cache by retailerIdFilter. Backend doesn't accept a
+  // retailerId server-side filter today, so the filter is applied client-side
+  // below — but giving each scoped view its own cache entry prevents the
+  // "shared cache" from holding a single dataset mis-shaped for one viewer's
+  // expectation.
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['admin', 'stores', status, stateCode],
+    queryKey: ['admin', 'stores', status, stateCode, retailerIdFilter ?? null],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status !== 'all') params.set('status', status);
@@ -70,6 +77,7 @@ export default function AdminStores() {
   });
 
   const filtered = (data ?? []).filter((s) => {
+    if (retailerIdFilter && s.retailer?.id !== retailerIdFilter) return false;
     if (!q) return true;
     const lq = q.toLowerCase();
     return (
@@ -80,9 +88,38 @@ export default function AdminStores() {
     );
   });
 
+  const filterRetailerName = retailerIdFilter
+    ? (data ?? []).find((s) => s.retailer?.id === retailerIdFilter)?.retailer?.legalName
+    : null;
+
   return (
     <Page>
-      <PageHeader title="Stores" description="All retailer storefronts on the platform." />
+      <PageHeader
+        title="Stores"
+        description="All retailer storefronts on the platform."
+        actions={
+          <Button asChild variant="ink" size="sm">
+            <Link to="/admin/retailers/new">+ New store</Link>
+          </Button>
+        }
+      />
+
+      {retailerIdFilter && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-line bg-bg-2 px-3 py-2 text-[12.5px]">
+          <span className="text-ink-3">Filtered to retailer:</span>
+          <span className="text-ink font-medium">{filterRetailerName ?? retailerIdFilter}</span>
+          <button
+            type="button"
+            onClick={() => {
+              searchParams.delete('retailerId');
+              setSearchParams(searchParams);
+            }}
+            className="ml-auto text-ink-3 hover:text-ink underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-3">
         <Select value={status} onValueChange={(v) => setStatus(v as StoreStatus | 'all')}>

@@ -42,16 +42,16 @@ export default function RetailerPayoutsUpcoming() {
       ) : (
         <>
           <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="Outstanding payable" value={formatPaise(data.outstandingPayable)} accent />
-            <Kpi label="Gross" value={formatPaise(data.grossPaise)} />
-            <Kpi label="Commission" value={`−${formatPaise(data.commissionPaise)}`} tone="warn" />
+            <Kpi label="Owed to you" value={formatPaise(data.outstandingPayable)} accent />
+            <Kpi label="Total sales" value={formatPaise(data.grossPaise)} />
+            <Kpi label="Platform fee" value={`−${formatPaise(data.commissionPaise)}`} tone="warn" />
             <Kpi label="TCS" value={`−${formatPaise(data.tcsPaise)}`} tone="warn" />
-            <Kpi label="On hold" value={`−${formatPaise(data.heldPaise)}`} tone="warn" />
+            <Kpi label="Held back" value={`−${formatPaise(data.heldPaise)}`} tone="warn" />
             <Kpi
-              label="Pending adjustments"
+              label="Adjustments pending"
               value={`${data.pendingAdjustmentsPaise >= 0 ? '+' : ''}${formatPaise(data.pendingAdjustmentsPaise)}`}
             />
-            <Kpi label="Next cycle" value={new Date(data.nextCycleDate).toLocaleDateString('en-IN')} sub={`every ${data.payoutCadenceDays}d`} />
+            <Kpi label="Next payout" value={new Date(data.nextCycleDate).toLocaleDateString('en-IN')} sub={`every ${data.payoutCadenceDays} days`} />
             <Kpi label="Orders" value={data.orderCount.toLocaleString('en-IN')} />
           </div>
 

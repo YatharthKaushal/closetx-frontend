@@ -179,14 +179,14 @@ export default function RetailerPromotionDetail() {
         />
         <div className="space-y-5">
           <div>
-            <h3 className="kicker text-ink-3 mb-2">Raw config</h3>
+            <h3 className="kicker text-ink-3 mb-2">Advanced settings</h3>
             <pre className="rounded-xs border border-rule bg-paper-2/40 p-4 text-[12px] font-mono overflow-auto leading-relaxed text-ink-2">
               {JSON.stringify(p.config, null, 2)}
             </pre>
           </div>
           {Object.keys(p.scope).length > 0 && (
             <div>
-              <h3 className="kicker text-ink-3 mb-2">Eligibility / scope</h3>
+              <h3 className="kicker text-ink-3 mb-2">Who it applies to</h3>
               <pre className="rounded-xs border border-rule bg-paper-2/40 p-4 text-[12px] font-mono overflow-auto leading-relaxed text-ink-2">
                 {JSON.stringify(p.scope, null, 2)}
               </pre>

@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { FreshnessLabel } from '@/components/ui/freshness-label';
+import { HBarChart } from '@/components/ui/hbar-chart';
+import { ViewToggle, type ReportView } from '@/components/ui/view-toggle';
 
 type Row = {
   listingId: string;
@@ -22,9 +24,11 @@ type Row = {
   lastSoldAt: string | null;
 };
 
-export default function ReportDeadStock() {
+/** Dead stock — stuck units per listing, oldest-sale first. */
+export function DeadStockPanel() {
   const scope = useStoreScope();
   const [days, setDays] = useState(30);
+  const [view, setView] = useState<ReportView>('chart');
   const params = useMemo(
     () => ({ daysWithoutSale: String(days), limit: '50' }),
     [days],
@@ -40,36 +44,51 @@ export default function ReportDeadStock() {
   const exportCsv = useServerCsv('dead_stock', path, params);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Reports"
-        title="Dead stock"
-        description="Listings with stock but no sales in the threshold window. Mark down or retire."
-        actions={
-          <>
-            <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
-            <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
-              Export CSV
-            </Button>
-          </>
-        }
-      />
-
-      <div className="mb-4 flex items-center gap-2 max-w-xs">
-        <label className="kicker text-ink-3">Days without sale</label>
-        <Input
-          type="number"
-          min={1}
-          value={days}
-          onChange={(e) => setDays(Math.max(1, parseInt(e.target.value || '30', 10)))}
-          className="w-20"
-        />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <label className="kicker text-ink-3">Days without sale</label>
+          <Input
+            type="number"
+            min={1}
+            value={days}
+            onChange={(e) => setDays(Math.max(1, parseInt(e.target.value || '30', 10)))}
+            className="w-20"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
+          <ViewToggle value={view} onChange={setView} />
+          <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
+            CSV
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <Skeleton className="h-40" />
       ) : rows.length === 0 ? (
         <Empty kicker="Clean shelves" title="No dead stock at this threshold." />
+      ) : view === 'chart' ? (
+        <Card>
+          <CardContent className="p-5">
+            <div className="kicker mb-3">Units sitting without a sale</div>
+            <HBarChart
+              rows={[...rows]
+                .sort((a, b) => b.totalStock - a.totalStock)
+                .slice(0, 20)
+                .map((r) => ({
+                  label: r.listingName,
+                  value: r.totalStock,
+                  display: `${r.totalStock} units`,
+                  sub: r.lastSoldAt
+                    ? `last sold ${new Date(r.lastSoldAt).toLocaleDateString('en-IN')}`
+                    : 'never sold',
+                }))}
+              color="var(--color-warning)"
+            />
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -98,6 +117,20 @@ export default function ReportDeadStock() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Standalone page wrapper — kept for the admin store-scoped report routes. */
+export default function ReportDeadStock() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Analytics"
+        title="Dead stock"
+        description="Listings with stock but no sales in the threshold window. Mark down or retire."
+      />
+      <DeadStockPanel />
     </Page>
   );
 }

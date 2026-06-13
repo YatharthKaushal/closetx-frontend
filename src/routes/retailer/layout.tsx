@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, BarChart3, Bell, Building2, CalendarDays, FileText, Inbox, LayoutDashboard, Package, PackageX, Pencil, Receipt, ShieldCheck, Sparkles, SlidersHorizontal, Tag, Users, Wallet, Warehouse, Zap } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bell, Building2, CalendarDays, FileText, LayoutDashboard, Package, Pencil, Receipt, ScanLine, Sparkles, SlidersHorizontal, Tag, Users, Wallet, Warehouse } from 'lucide-react';
 import { api } from '@/lib/api';
 import {
   SidebarShell,
@@ -43,9 +44,13 @@ function buildGroups(store: Store | null): SidebarGroup[] {
             label: 'Orders',
             items: [
               { to: '/retailer/orders', label: 'Orders', end: false, icon: Receipt, action: 'orders.view' },
-              { to: '/retailer/returns', label: 'Returns', end: true, icon: PackageX, action: 'returns.view' },
-              { to: '/retailer/held-items', label: 'Held items', end: true, icon: PackageX, action: 'held_items.view' },
-              { to: '/retailer/issues', label: 'Issues', end: true, icon: AlertTriangle, action: 'disputes.view' },
+              { to: '/retailer/disputes', label: 'Disputes', end: true, icon: AlertTriangle, action: 'disputes.view' },
+            ],
+          },
+          {
+            label: 'Counter',
+            items: [
+              { to: '/retailer/pos', label: 'Register', end: false, icon: ScanLine, action: 'pos.sell' },
             ],
           },
         ]
@@ -63,60 +68,40 @@ function buildGroups(store: Store | null): SidebarGroup[] {
     {
       label: 'Marketing',
       items: [
-        { to: '/retailer/promotions', label: 'Promotions', end: false, icon: Tag, action: 'promotions.view' },
         { to: '/retailer/voucher-batch', label: 'Voucher batches', end: true, icon: Tag, action: 'vouchers.view' },
       ],
     },
     {
       label: 'Finance',
       items: [
-        { to: '/retailer/fees', label: 'Fees', end: true, icon: Tag, action: 'fees.view' },
-        { to: '/retailer/tax-invoices', label: 'Tax invoices', end: true, icon: FileText, action: 'invoicing.view' },
-        { to: '/retailer/commission-invoices', label: 'Commission invoices', end: true, icon: FileText, action: 'invoicing.view' },
-        { to: '/retailer/billing-statements', label: 'Billing statements', end: true, icon: Receipt, action: 'invoicing.view' },
+        // Two top-level items; sub-pages absorbed via tabs on the hub pages.
+        // Fees moved into Store settings → KYC. Direct routes (tax-invoices,
+        // commission-invoices, billing-statements, payouts/upcoming,
+        // early-disbursement) stay registered so cross-links and bookmarks work.
+        { to: '/retailer/invoices', label: 'Invoices', end: true, icon: FileText, action: 'invoicing.view' },
         { to: '/retailer/payouts', label: 'Payouts', end: true, icon: Wallet, action: 'payouts.view' },
-        { to: '/retailer/payouts/upcoming', label: 'Upcoming payout', end: true, icon: Wallet, action: 'payouts.view' },
-        { to: '/retailer/early-disbursement', label: 'Early disbursement', end: true, icon: Zap, action: 'early_disbursement.request' },
       ],
     },
     {
-      label: 'Reports',
+      label: 'Analytics',
       items: [
-        { to: '/retailer/reports/sales-detailed', label: 'Sales detail', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/revenue-summary', label: 'Revenue summary', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/listings/revenue', label: 'Listing revenue', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/listings/conversion', label: 'Variant conversion', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/listings/best-sellers', label: 'Best sellers', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/listings/dead-stock', label: 'Dead stock', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/returns/top-listings', label: 'Top returns', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/compliance', label: 'Compliance', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/payouts/cycles', label: 'Payout cycles', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/sales', label: 'Sales (legacy)', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/performance', label: 'Performance (legacy)', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/returns', label: 'Returns (legacy)', end: true, icon: BarChart3, action: 'reports.view' },
-        { to: '/retailer/reports/inventory-health', label: 'Inventory health (legacy)', end: true, icon: BarChart3, action: 'reports.view' },
+        // Single sidebar entry. The hub holds every report as a chart-first
+        // tab; old per-report routes redirect in so bookmarks keep working.
+        { to: '/retailer/reports', label: 'Analytics', end: true, icon: BarChart3, action: 'reports.view' },
       ],
     },
     {
-      label: 'Workspace tools',
-      items: [
-        { to: '/retailer/inbox', label: 'Inbox', end: true, icon: Inbox, action: 'notifications.read' },
-        { to: '/retailer/notification-prefs', label: 'Notifications', end: true, icon: Bell, action: 'notifications.read' },
-        { to: '/retailer/holiday-calendar', label: 'Holiday calendar', end: true, icon: CalendarDays, action: 'store.holidays_edit' },
-        { to: '/retailer/pickup-slots', label: 'Pickup slots', end: true, icon: CalendarDays, action: 'store.edit_profile' },
-      ],
-    },
-    {
-      label: 'Compliance',
-      items: [
-        { to: '/retailer/kyc', label: 'KYC', end: true, icon: ShieldCheck, action: 'compliance.view' },
-        { to: '/retailer/change-requests', label: 'Change requests', end: true, icon: Pencil, action: 'change_requests.view' },
-      ],
-    },
-    {
-      label: 'Team',
+      // Consolidated under one heading: store ops, compliance, team, and
+      // notifications/holidays/pickup config. These are configure-once items
+      // not in the daily flow. Inbox is reachable via the top-bar bell.
+      label: 'Settings',
       items: [
         { to: '/retailer/staff', label: 'Staff', end: true, icon: Users, action: 'staff.list' },
+        { to: '/retailer/change-requests', label: 'Change requests', end: true, icon: Pencil, action: 'change_requests.view' },
+        { to: '/retailer/inbox', label: 'Notifications', end: true, icon: Bell, action: 'notifications.read' },
+        { to: '/retailer/holiday-calendar', label: 'Holiday calendar', end: true, icon: CalendarDays, action: 'store.holidays_edit' },
+        // Pickup slots hidden for now (route still registered). Uncomment to restore.
+        // { to: '/retailer/pickup-slots', label: 'Pickup slots', end: true, icon: CalendarDays, action: 'store.edit_profile' },
       ],
     },
   ];
@@ -147,11 +132,20 @@ export default function RetailerLayout() {
     staleTime: 5 * 60 * 1000,
     refetchOnMount: 'always',
   });
+  const subRole = useAuth((s) =>
+    s.session?.kind === 'retailer' ? s.session.retailer.subRole : undefined,
+  );
   const groups = useMemo(() => {
     const built = buildGroups(data?.store ?? null);
     return filterSidebarGroups(built, permissions);
   }, [data?.store, permissions]);
   useRetailerBanners();
+
+  // Delivery agents never use the full store dashboard — bounce them to their
+  // focused delivery surface (hooks above still run; this guard is after them).
+  if (subRole === 'delivery_agent') {
+    return <Navigate to="/retailer/deliveries" replace />;
+  }
 
   return (
     <RoleGate kind="retailer">
@@ -160,8 +154,9 @@ export default function RetailerLayout() {
       <SidebarShell
         kindLabel="Retailer"
         groups={groups}
-        searchHint="Search products, promos…"
+        searchHint="Search pages, products, orders…"
         sidebarFooter={AiQuotaChip}
+        paletteScope="retailer"
       />
     </RoleGate>
   );

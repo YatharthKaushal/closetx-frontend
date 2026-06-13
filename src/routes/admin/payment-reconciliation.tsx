@@ -9,7 +9,6 @@ import type {
   PaymentSettlementDetail,
   PaymentSettlementRow,
 } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,7 +41,15 @@ const DISC_TONE: Record<PaymentReconDiscrepancy['kind'], 'warning' | 'danger'> =
   duplicate: 'danger',
 };
 
-export default function AdminPaymentReconciliation() {
+const DISC_LABEL: Record<PaymentReconDiscrepancy['kind'], string> = {
+  amount_mismatch: "Amount doesn't match",
+  missing_in_capture: 'Not in our records',
+  missing_in_settlement: 'Not in provider file',
+  status_mismatch: "Status doesn't match",
+  duplicate: 'Duplicate',
+};
+
+export function PaymentReconciliationPanel() {
   const qc = useQueryClient();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [drillId, setDrillId] = useState<string | null>(null);
@@ -53,17 +60,16 @@ export default function AdminPaymentReconciliation() {
   });
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Payments"
-        title="Capture reconciliation"
-        description="Upload gateway settlement files. The reconciler matches each entry against payment captures and surfaces discrepancies."
-        actions={
-          <Button variant="ink" caps iconLeft={<Upload className="size-3.5" />} onClick={() => setUploadOpen(true)}>
-            Upload settlement
-          </Button>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+          Upload the statement from your payment provider. We check every line in it against the
+          payments we recorded and flag anything that doesn't match.
+        </p>
+        <Button variant="ink" caps className="shrink-0" iconLeft={<Upload className="size-3.5" />} onClick={() => setUploadOpen(true)}>
+          Upload statement
+        </Button>
+      </div>
 
       {list.isLoading ? (
         <Skeleton className="h-32" />
@@ -128,7 +134,7 @@ export default function AdminPaymentReconciliation() {
         onClose={() => setDrillId(null)}
         onMutate={() => qc.invalidateQueries({ queryKey: ['admin', 'payment-reconciliation'] })}
       />
-    </Page>
+    </div>
   );
 }
 
@@ -179,8 +185,8 @@ function UploadDialog({
         <DialogHeader>
           <DialogTitle>Upload settlement file</DialogTitle>
           <DialogDescription>
-            Paste the file contents (CSV for mock gateway: gateway_ref,amount_paise,tx_at).
-            The matching adapter is picked from `gatewayName`.
+            Paste the contents of the settlement file (a CSV with the columns
+            gateway_ref, amount_paise, tx_at).
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -308,7 +314,7 @@ function DrillDialog({
                 <ul className="space-y-1.5">
                   {detail.data.discrepancies.map((d) => (
                     <li key={d.id} className="flex items-start gap-2 border border-line-2 p-2 text-[12px]">
-                      <Badge tone={DISC_TONE[d.kind]} flat>{d.kind.replace(/_/g, ' ')}</Badge>
+                      <Badge tone={DISC_TONE[d.kind]} flat>{DISC_LABEL[d.kind] ?? d.kind.replace(/_/g, ' ')}</Badge>
                       <pre className="flex-1 overflow-x-auto whitespace-pre-wrap font-mono text-[11px] text-ink-2">{JSON.stringify(d.details, null, 0)}</pre>
                       {d.resolvedAt ? (
                         <Badge tone="success" flat><CheckCircle2 className="mr-1 size-3" /> resolved</Badge>

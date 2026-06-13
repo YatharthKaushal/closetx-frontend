@@ -27,8 +27,8 @@ export default function AdminReportFunnel() {
     <Page>
       <PageHeader
         kicker="Reports"
-        title="Consumer funnel"
-        description="Search → listing → bag → checkout → delivered. Locate the highest-leverage drop-off."
+        title="Shopper journey"
+        description="Search → product → bag → checkout → delivered. Find where the most shoppers drop off."
         actions={
           <>
             <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />

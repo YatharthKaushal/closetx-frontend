@@ -20,6 +20,7 @@ import { DiscountConfigForm } from '@/components/promotion/DiscountConfigForm';
 import { EligibilitySection, buildScopePayload } from '@/components/promotion/EligibilitySection';
 import { StackingPreview } from '@/components/promotion/StackingPreview';
 import { MultiSelect, type MultiSelectOption } from '@/components/ui/multi-select';
+import { StoreCombobox } from '@/components/ui/store-combobox';
 
 type AdminDiscountType =
   | 'flat_amount' | 'percent' | 'percent_upto' | 'bogo' | 'bxgy' | 'bundle' | 'tiered_cart' | 'free_shipping';
@@ -174,24 +175,11 @@ export default function AdminPromotionNew() {
               </div>
               <div>
                 <Label hint="Optional — store-scoped">Store</Label>
-                <Select
-                  value={storeId || '__platform__'}
-                  onValueChange={(v) => setValue('storeId', v === '__platform__' ? '' : v)}
-                  disabled={stores.isLoading}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={stores.isLoading ? 'Loading stores…' : 'Pick a store'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__platform__">Platform-wide (no store)</SelectItem>
-                    {(stores.data ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        <span className="font-medium">{s.legalName}</span>
-                        <span className="ml-2 font-mono text-[11px] text-ink-3">{s.id}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <StoreCombobox
+                  value={toComboboxValue(storeId)}
+                  onChange={(v: string) => setValue('storeId', fromComboboxValue(v))}
+                  extraOptions={[{ value: PLATFORM_SENTINEL, label: 'Platform-wide (no store)' }]}
+                />
               </div>
               <div>
                 <Label required>Initial status</Label>
@@ -318,6 +306,20 @@ export default function AdminPromotionNew() {
       </FormProvider>
     </Page>
   );
+}
+
+/**
+ * The Store combobox accepts string values; `__platform__` is a sentinel that
+ * means "no store-scope" (platform-wide). The form holds an empty string in
+ * that case. These two helpers keep that translation in one place so the
+ * combobox <-> form binding can't drift.
+ */
+const PLATFORM_SENTINEL = '__platform__';
+function toComboboxValue(storeId: string | undefined): string {
+  return !storeId ? PLATFORM_SENTINEL : storeId;
+}
+function fromComboboxValue(v: string): string {
+  return v === PLATFORM_SENTINEL ? '' : v;
 }
 
 function nullableInt(v: unknown): number | null {

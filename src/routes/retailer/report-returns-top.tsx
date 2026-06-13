@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/empty';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range-picker';
 import { FreshnessLabel } from '@/components/ui/freshness-label';
+import { HBarChart } from '@/components/ui/hbar-chart';
+import { ViewToggle, type ReportView } from '@/components/ui/view-toggle';
 
 type Row = {
   listingId: string;
@@ -25,9 +27,18 @@ type Row = {
 
 function bp(n: number) { return `${(n / 100).toFixed(1)}%`; }
 
-export default function ReportReturnsTop() {
+function topReason(breakdown: Record<string, number>): string | null {
+  const entries = Object.entries(breakdown);
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries[0]![0];
+}
+
+/** Top returns — ranked return-rate bars; dominant reason as the sub-label. */
+export function TopReturnsPanel() {
   const scope = useStoreScope();
   const [range, setRange] = useState<DateRangeValue>({ from: null, to: null });
+  const [view, setView] = useState<ReportView>('chart');
 
   const params = useMemo(() => {
     const p: Record<string, string> = { limit: '20' };
@@ -46,29 +57,44 @@ export default function ReportReturnsTop() {
   const exportCsv = useServerCsv('returns_top', path, params);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Reports"
-        title="Top-returned listings"
-        description="Listings driving the most returns + the dominant reasons. Fix sizing or quality at the source."
-        actions={
-          <>
-            <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
-            <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
-              Export CSV
-            </Button>
-          </>
-        }
-      />
-
-      <div className="mb-4 max-w-md">
-        <DateRangePicker value={range} onChange={setRange} placeholder="Last 30 days" />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="w-full max-w-xs">
+          <DateRangePicker value={range} onChange={setRange} placeholder="Last 30 days" />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
+          <ViewToggle value={view} onChange={setView} />
+          <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
+            CSV
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
         <Skeleton className="h-40" />
       ) : rows.length === 0 ? (
         <Empty kicker="No returns" title="No returns recorded in this window." />
+      ) : view === 'chart' ? (
+        <Card>
+          <CardContent className="p-5">
+            <div className="kicker mb-3">Return rate by listing</div>
+            <HBarChart
+              rows={[...rows]
+                .sort((a, b) => b.returnRateBp - a.returnRateBp)
+                .map((r) => {
+                  const reason = topReason(r.reasonBreakdown);
+                  return {
+                    label: r.listingName,
+                    value: r.returnRateBp,
+                    display: bp(r.returnRateBp),
+                    sub: `${r.returnsCount}/${r.itemsSold} returned${reason ? ` · mostly "${reason}"` : ''}`,
+                  };
+                })}
+              color="var(--color-danger)"
+            />
+          </CardContent>
+        </Card>
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
@@ -108,6 +134,20 @@ export default function ReportReturnsTop() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/** Standalone page wrapper — kept for the admin store-scoped report routes. */
+export default function ReportReturnsTop() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Analytics"
+        title="Top-returned listings"
+        description="Listings driving the most returns + the dominant reasons. Fix sizing or quality at the source."
+      />
+      <TopReturnsPanel />
     </Page>
   );
 }

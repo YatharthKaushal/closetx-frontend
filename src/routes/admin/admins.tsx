@@ -5,7 +5,6 @@ import { Check, Copy, KeyRound, Pencil, RotateCcw, UserPlus } from 'lucide-react
 import { api, ApiError } from '@/lib/api';
 import { formatAge } from '@/lib/status';
 import type { AdminSubRole, AdminTeamMember } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,13 +39,13 @@ const SUB_ROLE_LABEL: Record<AdminSubRole, string> = {
   support: 'Support',
 };
 
-export default function AdminAdmins() {
+export function AdminTeamPanel() {
   const canList = usePermission('team.list');
   if (!canList) return <NotAuthorized action="team.list" />;
-  return <AdminAdminsInner />;
+  return <AdminTeamPanelInner />;
 }
 
-function AdminAdminsInner() {
+function AdminTeamPanelInner() {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<AdminTeamMember | null>(null);
@@ -80,19 +79,18 @@ function AdminAdminsInner() {
   });
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Identity & Access"
-        title="Admin team"
-        description="Manage the platform admin roster. Each member's sub-role decides which queues and overrides are visible."
-        actions={
-          <PermissionGate action="team.create">
-            <Button iconLeft={<UserPlus className="size-3.5" />} onClick={() => setAddOpen(true)}>
-              Add admin
-            </Button>
-          </PermissionGate>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Manage the platform admin roster. Each member's sub-role decides which queues and
+          overrides are visible.
+        </p>
+        <PermissionGate action="team.create">
+          <Button iconLeft={<UserPlus className="size-3.5" />} onClick={() => setAddOpen(true)}>
+            Add admin
+          </Button>
+        </PermissionGate>
+      </div>
 
       {isLoading ? (
         <div className="space-y-2">
@@ -212,7 +210,7 @@ function AdminAdminsInner() {
         info={tempPasswordShown}
         onClose={() => setTempPasswordShown(null)}
       />
-    </Page>
+    </div>
   );
 }
 

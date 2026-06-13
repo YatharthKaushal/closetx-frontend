@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowUpRight, Check, Edit3, ImageOff, Plus, Power, Save, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Check, ChevronDown, Edit3, ImageOff, Plus, Power, Save, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { MediaGallery } from '@/components/ui/media-gallery';
 import { VariantImagePicker } from '@/components/ui/variant-image-picker';
@@ -17,9 +17,13 @@ import type {
   AttributeTemplate,
   Listing,
   Promotion,
+  SizeScale,
   Store,
   Variant,
+  VariantGroup,
 } from '@/lib/types';
+import { ColorSwatchPicker } from '@/components/retailer/product-wizard/color-swatch-picker';
+import { AgeRangeChips } from '@/components/retailer/age-range-chips';
 import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +32,15 @@ import { Input, Textarea } from '@/components/ui/input';
 import { FieldError, Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ListingAuditList } from '@/components/retailer/listing-audit-list';
+import { RichTextView } from '@/components/ui/rich-text-view';
+import { cn } from '@/lib/cn';
+
+// Tiptap is heavy — load the editor only when the Details tab renders.
+const RichTextEditor = lazy(() =>
+  import('@/components/ui/rich-text-editor').then((m) => ({ default: m.RichTextEditor })),
+);
 import {
   Dialog,
   DialogContent,
@@ -141,7 +153,6 @@ export default function ListingDetail() {
             actions={
               <div className="flex items-center gap-2">
                 <Badge tone={meta.tone}>{meta.label}</Badge>
-                {l.badge !== 'none' && <Badge flat>{l.badge}</Badge>}
                 <Button variant="ghost" size="sm" iconLeft={<Edit3 className="size-3.5" />} onClick={open}>
                   Edit
                 </Button>
@@ -156,35 +167,34 @@ export default function ListingDetail() {
         onChanged={() => qc.invalidateQueries({ queryKey: ['retailer'] })}
       />
 
-      <Tabs defaultValue="overview">
-        <TabsList className="overflow-x-auto whitespace-nowrap">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="variants">Variants &amp; inventory</TabsTrigger>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="promotions">Promotions</TabsTrigger>
-          <TabsTrigger value="ai">AI generations</TabsTrigger>
-          <TabsTrigger value="audit">Audit log</TabsTrigger>
-        </TabsList>
+      {/*
+       * Cross-links: products / inventory / pricing / orders are tightly
+       * related but live on separate sidebar pages. These chips deep-link
+       * straight to the relevant filtered view for the current product so the
+       * operator doesn't have to navigate back and re-filter.
+       */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Link
+          to={`/retailer/inventory?productId=${l.id}`}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2.5 py-1 text-[12px] text-ink-3 hover:text-ink hover:bg-bg-3"
+        >
+          Inventory for this product
+        </Link>
+        <Link
+          to={`/retailer/pricing?productId=${l.id}`}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2.5 py-1 text-[12px] text-ink-3 hover:text-ink hover:bg-bg-3"
+        >
+          Edit pricing
+        </Link>
+        <Link
+          to={`/retailer/orders?listingId=${l.id}`}
+          className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2.5 py-1 text-[12px] text-ink-3 hover:text-ink hover:bg-bg-3"
+        >
+          Orders with this product
+        </Link>
+      </div>
 
-        <TabsContent value="overview">
-          <OverviewTab listing={l} />
-        </TabsContent>
-        <TabsContent value="variants">
-          <VariantsTab listing={l} onChanged={() => qc.invalidateQueries({ queryKey: ['retailer'] })} />
-        </TabsContent>
-        <TabsContent value="details">
-          <DetailsTab listing={l} onChanged={() => qc.invalidateQueries({ queryKey: ['retailer'] })} />
-        </TabsContent>
-        <TabsContent value="promotions">
-          <PromotionsTab listing={l} />
-        </TabsContent>
-        <TabsContent value="ai">
-          <AiGenerationsTab listing={l} />
-        </TabsContent>
-        <TabsContent value="audit">
-          <AuditLogTab listing={l} />
-        </TabsContent>
-      </Tabs>
+      <ListingDetailTabs listing={l} onInvalidate={() => qc.invalidateQueries({ queryKey: ['retailer'] })} />
     </Page>
   );
 }
@@ -249,6 +259,108 @@ function QuickEditNameDialog({
   );
 }
 
+/**
+ * Phase 3.4 — primary tabs in frequency order (Overview, Variants, Details,
+ * Promotions). Reference-only tabs (AI generations, Audit log) live behind a
+ * "More" dropdown so the strip stays mobile-friendly and the operator's eye
+ * lands on action tabs first.
+ */
+const PRIMARY_TABS = ['overview', 'variants', 'details', 'promotions'] as const;
+const OVERFLOW_TABS = ['ai', 'audit'] as const;
+type ListingTabKey = (typeof PRIMARY_TABS)[number] | (typeof OVERFLOW_TABS)[number];
+
+const TAB_LABEL: Record<ListingTabKey, string> = {
+  overview: 'Overview',
+  variants: 'Variants & inventory',
+  details: 'Details',
+  promotions: 'Promotions',
+  ai: 'AI generations',
+  audit: 'Audit log',
+};
+
+const ALL_TABS = [...PRIMARY_TABS, ...OVERFLOW_TABS] as ReadonlyArray<ListingTabKey>;
+
+function parseListingTab(v: string | null): ListingTabKey {
+  return ALL_TABS.includes(v as ListingTabKey) ? (v as ListingTabKey) : 'overview';
+}
+
+function ListingDetailTabs({
+  listing,
+  onInvalidate,
+}: {
+  listing: Listing;
+  onInvalidate: () => void;
+}) {
+  // Tab bound to `?tab=` so refresh and share-URL preserve the operator's
+  // selection. Default `overview` is omitted from the URL to keep links tidy.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = parseListingTab(searchParams.get('tab'));
+  const setTab = (v: ListingTabKey) => {
+    setSearchParams(
+      (prev) => {
+        const sp = new URLSearchParams(prev);
+        if (v === 'overview') sp.delete('tab');
+        else sp.set('tab', v);
+        return sp;
+      },
+      { replace: true },
+    );
+  };
+  const overflowActive = (OVERFLOW_TABS as ReadonlyArray<string>).includes(tab);
+  return (
+    <Tabs value={tab} onValueChange={(v) => setTab(v as ListingTabKey)}>
+      <TabsList className="overflow-x-auto whitespace-nowrap">
+        {PRIMARY_TABS.map((k) => (
+          <TabsTrigger key={k} value={k}>
+            {TAB_LABEL[k]}
+          </TabsTrigger>
+        ))}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center gap-1 px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                overflowActive ? 'text-ink' : 'text-ink-3 hover:text-ink',
+              )}
+              aria-haspopup="menu"
+            >
+              {overflowActive ? TAB_LABEL[tab as 'ai' | 'audit'] : 'More'}
+              <ChevronDown className="size-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {OVERFLOW_TABS.map((k) => (
+              <DropdownMenuItem key={k} onSelect={() => setTab(k)}>
+                {TAB_LABEL[k]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TabsList>
+
+      <TabsContent value="overview">
+        <OverviewTab listing={listing} />
+      </TabsContent>
+      <TabsContent value="variants">
+        <VariantsTab listing={listing} onChanged={onInvalidate} />
+      </TabsContent>
+      <TabsContent value="details">
+        <DetailsTab listing={listing} onChanged={onInvalidate} />
+      </TabsContent>
+      <TabsContent value="promotions">
+        <PromotionsTab listing={listing} />
+      </TabsContent>
+      <TabsContent value="ai">
+        <AiGenerationsTab listing={listing} />
+      </TabsContent>
+      <TabsContent value="audit">
+        <AuditLogTab listing={listing} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 function OverviewTab({ listing }: { listing: Listing }) {
   const variants = listing.variants ?? [];
   const totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
@@ -303,6 +415,16 @@ function OverviewTab({ listing }: { listing: Listing }) {
             <StockCard label="Available" value={totalAvailable} warn={totalAvailable === 0 && variants.length > 0} />
           </div>
         </section>
+
+        {/* Rich long description (sanitized server-side on write) */}
+        {listing.descriptionLong && (
+          <section>
+            <div className="kicker mb-3 text-ink-3">Full description</div>
+            <div className="rounded-md border border-rule bg-bg p-4">
+              <RichTextView html={listing.descriptionLong} />
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -657,6 +779,7 @@ function AuditLogTab({ listing }: { listing: Listing }) {
 
 function VariantsTab({ listing, onChanged }: { listing: Listing; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
+  const [addingSize, setAddingSize] = useState(false);
   const [editing, setEditing] = useState<Variant | null>(null);
   const variants = listing.variants ?? [];
 
@@ -665,6 +788,34 @@ function VariantsTab({ listing, onChanged }: { listing: Listing; onChanged: () =
     queryFn: () => api<AttributeTemplate[]>('/retailer/attribute-templates'),
   });
   const activeTemplate = templates?.find((t) => t.id === listing.templateId);
+
+  // Color-section rendering for the system color → size structure: order the
+  // rows by group, and mark the first row of each group with its header.
+  const isColorSize = listing.variantMode === 'color_size';
+  const namedGroups = (listing.variantGroups ?? []).filter((g) => !g.isDefault);
+  const { orderedVariants, headerBefore } = useMemo(() => {
+    type Header = { name: string; colorHex: string | null; count: number; stock: number };
+    if (!isColorSize || namedGroups.length === 0) {
+      return { orderedVariants: variants, headerBefore: new Map<string, Header>() };
+    }
+    const ordered: Variant[] = [];
+    const headers = new Map<string, Header>();
+    const namedIds = new Set(namedGroups.map((g) => g.id));
+    const sectionRows = namedGroups
+      .map((g) => ({ name: g.name, colorHex: g.colorHex, rows: variants.filter((v) => v.groupId === g.id) }))
+      .concat([{ name: 'Ungrouped', colorHex: null, rows: variants.filter((v) => !namedIds.has(v.groupId)) }])
+      .filter((s) => s.rows.length > 0);
+    for (const s of sectionRows) {
+      headers.set(s.rows[0]!.id, {
+        name: s.name,
+        colorHex: s.colorHex,
+        count: s.rows.length,
+        stock: s.rows.reduce((sum, v) => sum + v.stock, 0),
+      });
+      ordered.push(...s.rows);
+    }
+    return { orderedVariants: ordered, headerBefore: headers };
+  }, [isColorSize, namedGroups, variants]);
 
   return (
     <>
@@ -687,9 +838,15 @@ function VariantsTab({ listing, onChanged }: { listing: Listing; onChanged: () =
         )}
       </div>
       <div className="-mt-4 mb-6 flex justify-end">
-        <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setAdding(true)}>
-          New variant
-        </Button>
+        {isColorSize ? (
+          <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setAddingSize(true)}>
+            Add size
+          </Button>
+        ) : (
+          <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setAdding(true)}>
+            New variant
+          </Button>
+        )}
       </div>
 
       {variants.length === 0 ? (
@@ -720,9 +877,25 @@ function VariantsTab({ listing, onChanged }: { listing: Listing; onChanged: () =
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
-              {variants.map((v, i) => (
+              {orderedVariants.map((v, i) => (
+                <React.Fragment key={v.id}>
+                {headerBefore.has(v.id) && (
+                  <tr className="bg-paper-2/60">
+                    <td colSpan={9} className="px-3 py-2">
+                      {headerBefore.get(v.id)!.colorHex && (
+                        <span
+                          className="mr-1.5 inline-block size-3 rounded-sm border border-line align-middle"
+                          style={{ backgroundColor: headerBefore.get(v.id)!.colorHex! }}
+                        />
+                      )}
+                      <span className="text-[12.5px] font-semibold text-ink">{headerBefore.get(v.id)!.name}</span>
+                      <span className="ml-2 text-[11.5px] text-ink-3">
+                        {headerBefore.get(v.id)!.count} size{headerBefore.get(v.id)!.count === 1 ? '' : 's'} · {headerBefore.get(v.id)!.stock} in stock
+                      </span>
+                    </td>
+                  </tr>
+                )}
                 <tr
-                  key={v.id}
                   onClick={() => setEditing(v)}
                   className={`cursor-pointer hover:bg-surface/40 transition-opacity ${v.isActive ? '' : 'opacity-50'}`}
                 >
@@ -776,12 +949,22 @@ function VariantsTab({ listing, onChanged }: { listing: Listing; onChanged: () =
                     </Button>
                   </Td>
                 </tr>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
         </div>
       )}
 
+      {isColorSize && (
+        <AddSizeDialog
+          open={addingSize}
+          onOpenChange={setAddingSize}
+          listing={listing}
+          groups={namedGroups}
+          onCreated={onChanged}
+        />
+      )}
       <CreateVariantsDialog
         open={adding}
         onOpenChange={setAdding}
@@ -797,6 +980,201 @@ function VariantsTab({ listing, onChanged }: { listing: Listing; onChanged: () =
         onSaved={onChanged}
       />
     </>
+  );
+}
+
+/**
+ * Quick add for the system color → size structure: pick an existing color (or
+ * create a new one inline), name the size, set price / MRP / stock / SKU. The
+ * server derives attributes and the "Color / Size" label.
+ */
+function AddSizeDialog({
+  open,
+  onOpenChange,
+  listing,
+  groups,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  listing: Listing;
+  groups: VariantGroup[];
+  onCreated: () => void;
+}) {
+  const [groupChoice, setGroupChoice] = useState<string>(groups[0]?.id ?? '__new');
+  const [newColor, setNewColor] = useState('');
+  const [newHex, setNewHex] = useState<string | null>(null);
+  const [size, setSize] = useState('');
+  const [price, setPrice] = useState('');
+  const [mrp, setMrp] = useState('');
+  const [stock, setStock] = useState('');
+  const [sku, setSku] = useState('');
+
+  // Category-aware size systems (UK/US/EU for footwear, Letter/Waist for apparel…).
+  const scalesQ = useQuery({
+    queryKey: ['catalog', 'size-scales', listing.categoryId],
+    queryFn: () => api<SizeScale[]>(`/catalog/size-scales?categoryId=${listing.categoryId}`),
+    enabled: open,
+  });
+  const [scaleId, setScaleId] = useState<string | null>(null);
+  const activeScale = scalesQ.data?.find((s) => s.id === scaleId) ?? scalesQ.data?.[0];
+
+  const toPaiseLocal = (v: string): number | null => {
+    const n = Number(v);
+    return v.trim() === '' || Number.isNaN(n) ? null : Math.round(n * 100);
+  };
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const pricePaise = toPaiseLocal(price);
+      if (pricePaise === null || pricePaise <= 0) throw new Error('Set a selling price');
+      const compareAt = toPaiseLocal(mrp);
+      if (compareAt !== null && compareAt <= pricePaise) throw new Error('MRP must exceed the selling price');
+      if (!size.trim()) throw new Error('Enter a size');
+
+      let groupId = groupChoice;
+      if (groupChoice === '__new') {
+        const name = newColor.trim();
+        if (!name) throw new Error('Name the new color');
+        const created = await api<VariantGroup>(`/retailer/listings/${listing.id}/groups`, {
+          method: 'POST',
+          body: { name, ...(newHex ? { colorHex: newHex } : {}) },
+        });
+        groupId = created.id;
+      }
+      await api(`/retailer/listings/${listing.id}/groups/${groupId}/variants`, {
+        method: 'POST',
+        body: {
+          size: size.trim(),
+          pricePaise,
+          ...(compareAt !== null ? { compareAtPrice: compareAt } : {}),
+          stock: stock.trim() === '' ? 0 : Number(stock) || 0,
+          ...(sku.trim() ? { sku: sku.trim() } : {}),
+          imageUrls: [],
+        },
+      });
+    },
+    onSuccess: () => {
+      toast.success('Size added');
+      onOpenChange(false);
+      setSize('');
+      setPrice('');
+      setMrp('');
+      setStock('');
+      setSku('');
+      setNewColor('');
+      setNewHex(null);
+      onCreated();
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not add size'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add a size</DialogTitle>
+          <DialogDescription>Pick a color and add one size under it.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label required>Color</Label>
+            <Select value={groupChoice} onValueChange={setGroupChoice}>
+              <SelectTrigger>
+                <SelectValue placeholder="Pick a color" />
+              </SelectTrigger>
+              <SelectContent>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value="__new">New color…</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {groupChoice === '__new' && (
+            <div className="space-y-2">
+              <div>
+                <Label required hint="your naming — Black, Midnight Green…">New color name</Label>
+                <Input value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="e.g. Navy" />
+              </div>
+              <ColorSwatchPicker
+                value={newHex}
+                onChange={setNewHex}
+                onSuggestName={(n) => {
+                  if (!newColor.trim()) setNewColor(n);
+                }}
+              />
+            </div>
+          )}
+          <div>
+            <Label required>Size</Label>
+            {(scalesQ.data?.length ?? 0) > 1 && (
+              <div className="mb-1.5 flex flex-wrap gap-1">
+                {scalesQ.data!.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setScaleId(s.id)}
+                    className={cn(
+                      'rounded-full px-2.5 py-0.5 text-[11px] transition-colors',
+                      s.id === (activeScale?.id ?? '') ? 'bg-ink text-paper' : 'bg-bg-3 text-ink-3 hover:text-ink',
+                    )}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {activeScale && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {activeScale.values.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setSize(v)}
+                    className={cn(
+                      'rounded-md border px-2.5 py-1 text-[12px] transition-colors',
+                      size === v ? 'border-ink bg-ink text-paper' : 'border-line bg-bg text-ink-2 hover:border-ink-3',
+                    )}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Input value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. M, UK 8, 32" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label required>Selling price ₹</Label>
+              <Input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="999" />
+            </div>
+            <div>
+              <Label>MRP ₹</Label>
+              <Input value={mrp} onChange={(e) => setMrp(e.target.value)} inputMode="decimal" placeholder="—" />
+            </div>
+            <div>
+              <Label>Stock</Label>
+              <Input value={stock} onChange={(e) => setStock(e.target.value)} inputMode="numeric" placeholder="0" />
+            </div>
+            <div>
+              <Label hint="auto">SKU</Label>
+              <Input value={sku} onChange={(e) => setSku(e.target.value)} mono placeholder="auto" />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="ink" size="sm" loading={create.isPending} onClick={() => create.mutate()}>
+            Add size
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1518,14 +1896,15 @@ function EditInventoryDialog({
 
 const DetailsPatchSchema = z.object({
   name: z.string().trim().min(1).max(200),
-  description: z.string().trim().max(5000).optional().or(z.literal('').transform(() => undefined)),
-  badge: z.enum(['new', 'hot', 'trending', 'none']),
+  description: z.string().trim().max(2000).optional().or(z.literal('').transform(() => undefined)),
+  // Rich HTML from the editor; '' is mapped to null on save (clears the column).
+  descriptionLong: z.string().optional(),
   listingPolicy: z.enum(['return', 'replace', 'final_sale']),
   // 'taken_down' is admin-set; we accept it in the form default so the field renders,
   // but the UI Select keeps it read-only — see the conditional below.
   status: z.enum(['draft', 'active', 'retired', 'taken_down']),
   occasion: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
-  ageGroup: z.enum(['kids', 'teens', 'adults', 'all']).nullable().optional(),
+  ageGroups: z.array(z.string()).max(7).default([]),
 });
 type DetailsPatchValues = z.infer<typeof DetailsPatchSchema>;
 
@@ -1555,11 +1934,11 @@ function DetailsTab({ listing, onChanged }: { listing: Listing; onChanged: () =>
     defaultValues: {
       name: listing.name,
       description: listing.description ?? '',
-      badge: listing.badge,
+      descriptionLong: listing.descriptionLong ?? '',
       listingPolicy: listing.listingPolicy,
       status: listing.status,
       occasion: listing.occasion ?? [],
-      ageGroup: listing.ageGroup ?? null,
+      ageGroups: listing.ageGroups ?? [],
     },
   });
 
@@ -1574,7 +1953,11 @@ function DetailsTab({ listing, onChanged }: { listing: Listing; onChanged: () =>
 
   const save = useMutation({
     mutationFn: (v: DetailsPatchValues) =>
-      api<Listing>(`/retailer/listings/${listing.id}`, { method: 'PATCH', body: v }),
+      api<Listing>(`/retailer/listings/${listing.id}`, {
+        method: 'PATCH',
+        // Empty editor → null so the server clears the column.
+        body: { ...v, descriptionLong: v.descriptionLong ? v.descriptionLong : null },
+      }),
     onSuccess: () => {
       toast.success('Saved');
       onChanged();
@@ -1604,9 +1987,33 @@ function DetailsTab({ listing, onChanged }: { listing: Listing; onChanged: () =>
           <FieldError>{errors.name?.message}</FieldError>
         </div>
         <div>
-          <Label htmlFor="dDesc" hint="Optional">Description</Label>
-          <Textarea id="dDesc" rows={6} {...register('description')} />
+          <Label htmlFor="dDesc" hint="Optional">Short description</Label>
+          <Textarea
+            id="dDesc"
+            rows={4}
+            placeholder="One-liner for cards and search…"
+            {...register('description')}
+          />
           <FieldError>{errors.description?.message}</FieldError>
+        </div>
+        <div>
+          <Label hint="Optional">Full description</Label>
+          <p className="mb-1.5 text-[12px] text-ink-3">
+            Rich formatting for the product page — headings, lists, tables, colours and images.
+          </p>
+          <Suspense
+            fallback={
+              <div className="flex h-[260px] items-center justify-center rounded-md border border-line-2 text-[12.5px] text-ink-4">
+                Loading editor…
+              </div>
+            }
+          >
+            <RichTextEditor
+              value={watch('descriptionLong') ?? ''}
+              onChange={(html) => setValue('descriptionLong', html, { shouldDirty: true })}
+              uploadFolder={`products/${listing.id}/description`}
+            />
+          </Suspense>
         </div>
       </section>
 
@@ -1623,18 +2030,6 @@ function DetailsTab({ listing, onChanged }: { listing: Listing; onChanged: () =>
               <SelectItem value="draft">Draft</SelectItem>
               {watch('status') === 'active' && <SelectItem value="active">Active</SelectItem>}
               <SelectItem value="retired">Retired</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label>Badge</Label>
-          <Select value={watch('badge')} onValueChange={(v) => setValue('badge', v as DetailsPatchValues['badge'])}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None</SelectItem>
-              <SelectItem value="new">New</SelectItem>
-              <SelectItem value="hot">Hot</SelectItem>
-              <SelectItem value="trending">Trending</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1659,20 +2054,11 @@ function DetailsTab({ listing, onChanged }: { listing: Listing; onChanged: () =>
           )}
         </div>
         <div>
-          <Label hint="Optional">Age group</Label>
-          <Select
-            value={watch('ageGroup') ?? '__none__'}
-            onValueChange={(v) => setValue('ageGroup', v === '__none__' ? null : (v as NonNullable<DetailsPatchValues['ageGroup']>))}
-          >
-            <SelectTrigger><SelectValue placeholder="Unspecified" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Unspecified</SelectItem>
-              <SelectItem value="kids">Kids</SelectItem>
-              <SelectItem value="teens">Teens</SelectItem>
-              <SelectItem value="adults">Adults</SelectItem>
-              <SelectItem value="all">All ages</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label hint="Optional · multi-select · years">Age groups</Label>
+          <AgeRangeChips
+            value={watch('ageGroups') ?? []}
+            onChange={(next) => setValue('ageGroups', next)}
+          />
         </div>
         <div>
           <Label hint="Optional · multi-select">Occasion tags</Label>
@@ -1896,12 +2282,6 @@ const REVIEW_POLICY_LABEL: Record<Listing['listingPolicy'], string> = {
   final_sale: 'Final sale',
 };
 
-const REVIEW_AGE_GROUP_LABEL: Record<NonNullable<Listing['ageGroup']>, string> = {
-  kids: 'Kids',
-  teens: 'Teens',
-  adults: 'Adults',
-  all: 'All ages',
-};
 
 function ReviewPublishDialog({
   open,
@@ -1935,7 +2315,6 @@ function ReviewPublishDialog({
             <ReviewRow label="Brand" value={listing.brand?.name ?? <em className="text-ink-3">Unbranded</em>} />
             <ReviewRow label="Category" value={listing.category?.label ?? <em className="text-ink-3">Uncategorised</em>} />
             <ReviewRow label="Cut for" value={<span className="capitalize">{listing.gender}</span>} />
-            <ReviewRow label="Badge" value={<span className="capitalize">{listing.badge}</span>} />
             <ReviewRow
               label="Description"
               value={listing.description?.trim() || <em className="text-ink-3">none</em>}
@@ -1945,10 +2324,10 @@ function ReviewPublishDialog({
           {/* Tags */}
           <ReviewBlock title="Tags">
             <ReviewRow
-              label="Age group"
+              label="Age groups"
               value={
-                listing.ageGroup
-                  ? REVIEW_AGE_GROUP_LABEL[listing.ageGroup]
+                (listing.ageGroups ?? []).length > 0
+                  ? `${listing.ageGroups.join(', ')} yrs`
                   : <em className="text-ink-3">unspecified</em>
               }
             />

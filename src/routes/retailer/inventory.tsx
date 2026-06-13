@@ -94,6 +94,25 @@ export default function RetailerInventory() {
   const status = (searchParams.get('status') ?? 'all') as StatusFilter;
   const flag = (searchParams.get('flag') ?? 'all') as FlagFilter;
   const categoryId = searchParams.get('categoryId') ?? '';
+  // Optional product scope: when set (e.g. via the dashboard low-stock chip
+  // or the listing detail cross-link), the visible rows are filtered to that
+  // listing's variants only.
+  const productIdFilter = searchParams.get('productId') ?? '';
+
+  /**
+   * A stale `page=N` carried over from a previous URL can land on an empty
+   * page after a productId filter narrows results to one product. Drop the
+   * page param as soon as the productId filter is active, so the filtered
+   * view always starts from the top.
+   */
+  useEffect(() => {
+    if (!productIdFilter) return;
+    if (!searchParams.get('page')) return;
+    const sp = new URLSearchParams(searchParams);
+    sp.delete('page');
+    setSearchParams(sp, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productIdFilter]);
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
   const pageSize = 50;
 
@@ -153,8 +172,14 @@ export default function RetailerInventory() {
     },
   });
 
-  const all = inventory.data?.rows ?? [];
-  const total = inventory.data?.total ?? 0;
+  const rawRows = inventory.data?.rows ?? [];
+  const all = productIdFilter
+    ? rawRows.filter((r) => r.listingId === productIdFilter)
+    : rawRows;
+  const productFilterName = productIdFilter
+    ? rawRows.find((r) => r.listingId === productIdFilter)?.listingName ?? null
+    : null;
+  const total = productIdFilter ? all.length : inventory.data?.total ?? 0;
   const threshold = inventory.data?.lowStockThreshold ?? LOW_STOCK_THRESHOLD;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -201,6 +226,20 @@ export default function RetailerInventory() {
           </div>
         }
       />
+
+      {productIdFilter && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-line bg-bg-2 px-3 py-2 text-[12.5px]">
+          <span className="text-ink-3">Filtered to product:</span>
+          <span className="text-ink font-medium">{productFilterName ?? productIdFilter}</span>
+          <button
+            type="button"
+            onClick={() => patchParams({ productId: null })}
+            className="ml-auto text-ink-3 hover:text-ink underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -349,13 +388,20 @@ export default function RetailerInventory() {
             selected={selected}
             onSelectChange={setSelected}
           />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            total={total}
-            pageSize={pageSize}
-            onPage={(p) => patchParams({ page: p === 1 ? null : String(p) })}
-          />
+          {/*
+           * Hide pagination while a productId filter is active. The filter
+           * narrows to one product's variants (always a handful) so a page
+           * control is misleading — `total` is already `all.length` above.
+           */}
+          {!productIdFilter && (
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              onPage={(p) => patchParams({ page: p === 1 ? null : String(p) })}
+            />
+          )}
         </>
       )}
 

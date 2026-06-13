@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { applicationStatusMeta, formatAge } from '@/lib/status';
 import type { Application, ApplicationStatus } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -15,6 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { RejectApplicationDialog } from '@/components/admin/reject-application-dialog';
+import { BulkActionBar } from '@/components/admin/bulk-action-bar';
+import { bulkResultToast, runBulk } from '@/components/admin/bulk-result-toast';
+import { useBulkSelect } from '@/hooks/useBulkSelect';
 import type { ApplicationDocumentKind } from '@/lib/types';
 import {
   Select,
@@ -32,7 +34,7 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: ApplicationStatus | 'all'; label: s
   { value: 'all', label: 'All applications' },
 ];
 
-export default function AdminApplications() {
+export function ApplicationsPanel() {
   const [status, setStatus] = useState<ApplicationStatus | 'all'>('pending');
   const [q, setQ] = useState('');
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
@@ -45,6 +47,25 @@ export default function AdminApplications() {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Approval failed.'),
+  });
+
+  const bulkApproveMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      runBulk(
+        ids.map((id) => ({
+          id,
+          run: () => api(`/admin/applications/${id}/approve`, { method: 'POST', body: {} }),
+        })),
+      ),
+    onSuccess: (result) => {
+      const byId = new Map((data ?? []).map((a) => [a.id, a.legalName]));
+      bulkResultToast({
+        result,
+        verb: 'approved',
+        describe: (id) => byId.get(id) ?? id.slice(0, 8),
+      });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] });
+    },
   });
 
   const rejectMutation = useMutation({
@@ -90,14 +111,18 @@ export default function AdminApplications() {
     );
   }, [data, q]);
 
+  const selectableRows = useMemo(
+    () => filtered.filter((a) => a.status === 'pending' || a.status === 'docs_requested'),
+    [filtered],
+  );
+  const bulk = useBulkSelect(selectableRows);
+
   return (
-    <Page>
-      <PageHeader
-        kicker="Onboarding"
-        title="Applications"
-        description="Review pending retailer applications. Approve to admit, request clarification on weak fields, or reject with cause."
-        actions={undefined}
-      />
+    <div>
+      <p className="mb-4 max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+        Review pending retailer applications. Approve to admit, request clarification on weak fields,
+        or reject with cause. An approved application provisions a retailer.
+      </p>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 max-w-md">
@@ -136,6 +161,15 @@ export default function AdminApplications() {
             return (
               <Card key={a.id}>
                 <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+                  {canAct && (
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0 accent-ink"
+                      checked={bulk.isSelected(a.id)}
+                      onChange={() => bulk.toggle(a.id)}
+                      aria-label={`Select ${a.legalName}`}
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[14px] font-semibold text-ink">{a.legalName}</span>
@@ -154,7 +188,7 @@ export default function AdminApplications() {
                       <CopyableId value={a.id} label="application id" />
                     </div>
                     <div className="mt-1 text-[11.5px] text-ink-4">
-                      Submitted {formatAge(a.submittedAt)} · {a.documentsCount}/5 docs · penny-drop {(a.pennyDropResult ?? 'not_attempted').replace('_', ' ')}
+                      Submitted {formatAge(a.submittedAt)} · {a.documentsCount}/5 docs · bank check {(a.pennyDropResult ?? 'not_attempted').replace('_', ' ')}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -197,6 +231,21 @@ export default function AdminApplications() {
           rejectTarget && rejectMutation.mutate({ id: rejectTarget, reason, mustReuploadDocKinds })
         }
       />
-    </Page>
+      <BulkActionBar
+        selectedCount={bulk.selectedCount}
+        onClear={bulk.clear}
+        actions={[
+          {
+            label: 'Approve selected',
+            loading: bulkApproveMutation.isPending,
+            onClick: () => {
+              bulkApproveMutation.mutate(bulk.selectedIds, {
+                onSettled: () => bulk.clear(),
+              });
+            },
+          },
+        ]}
+      />
+    </div>
   );
 }

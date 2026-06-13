@@ -6,7 +6,6 @@ import { ArrowUpRight, BellRing, Lock } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatAge, formatPaise, paymentMethodLabel } from '@/lib/status';
 import type { PaymentFailureRow } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,7 +24,7 @@ import { Label } from '@/components/ui/label';
 
 type DialogState = { kind: 'notify' | 'release'; row: PaymentFailureRow } | null;
 
-export default function AdminPaymentFailures() {
+export function PaymentFailuresPanel() {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<DialogState>(null);
   const [note, setNote] = useState('');
@@ -67,12 +66,11 @@ export default function AdminPaymentFailures() {
   });
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Payments"
-        title="Payment failures"
-        description="Capture-failure feed. Notify the consumer to retry or release the inventory reservation so other shoppers can buy."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Payments that didn't go through. Ask the customer to try again, or release the items being
+        held for that order so other shoppers can buy them.
+      </p>
 
       {isLoading ? (
         <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>
@@ -169,6 +167,6 @@ export default function AdminPaymentFailures() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Page>
+    </div>
   );
 }

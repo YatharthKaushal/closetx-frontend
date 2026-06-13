@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Lock, Unlock } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,7 +46,7 @@ const CAPABILITY_LABELS: Record<string, { label: string; description: string }> 
 
 const QK = ['admin', 'platform', 'delegation-modes'];
 
-export default function AdminDelegationModes() {
+export function FeatureControlsPanel() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -66,12 +65,11 @@ export default function AdminDelegationModes() {
   });
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Platform"
-        title="Feature controls"
-        description="Toggle which capabilities retailers can use. Changes take effect immediately — no deploy needed."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Toggle which capabilities retailers can use. Changes take effect immediately — no deploy
+        needed.
+      </p>
 
       {isLoading ? (
         <div className="space-y-2">{[0, 1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-16" />)}</div>
@@ -134,6 +132,6 @@ export default function AdminDelegationModes() {
           </CardContent>
         </Card>
       )}
-    </Page>
+    </div>
   );
 }

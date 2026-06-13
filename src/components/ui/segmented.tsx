@@ -1,6 +1,6 @@
 import { cn } from '@/lib/cn';
 
-type Option<T extends string> = { value: T; label: string };
+type Option<T extends string> = { value: T; label: React.ReactNode };
 
 type SegmentedProps<T extends string> = {
   options: Option<T>[];

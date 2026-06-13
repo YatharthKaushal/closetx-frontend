@@ -86,7 +86,7 @@ function FlagList({
   onAssign: (args: { flagId: string; adminId: string | null }) => void;
 }) {
   if (loading) return <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-20" />)}</div>;
-  if (list.length === 0) return <Empty kicker="All clear" title="No open flags in this bucket." />;
+  if (list.length === 0) return <Empty kicker="All clear" title="No open flags here." />;
   return (
     <ul className="space-y-2">
       {list.map((f) => (

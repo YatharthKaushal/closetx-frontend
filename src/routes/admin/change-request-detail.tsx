@@ -102,7 +102,7 @@ export default function AdminChangeRequestDetail() {
     <Page>
       <div className="mb-3">
         <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-          <Link to="/admin/change-requests">Back</Link>
+          <Link to="/admin/compliance?tab=change-requests">Back</Link>
         </Button>
       </div>
 

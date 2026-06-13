@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +30,7 @@ type Adjustment = {
   createdAt: string;
 };
 
-export default function AdminPayoutAdjustments() {
+export function PayoutAdjustmentsPanel() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -41,17 +40,16 @@ export default function AdminPayoutAdjustments() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Payout adjustments"
-        description="Apply debit (recover over-payouts) or credit (goodwill) entries against a retailer's next payout cycle."
-        actions={
-          <Button variant="accent" size="sm" iconLeft={<Plus className="size-3.5" />} onClick={() => setCreateOpen(true)}>
-            New adjustment
-          </Button>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+          Add a charge to a retailer's next payout (to recover money they were overpaid) or a credit
+          (a goodwill payment to them).
+        </p>
+        <Button variant="accent" size="sm" className="shrink-0" iconLeft={<Plus className="size-3.5" />} onClick={() => setCreateOpen(true)}>
+          New adjustment
+        </Button>
+      </div>
 
       {isLoading ? (
         <Skeleton className="h-32" />
@@ -97,7 +95,7 @@ export default function AdminPayoutAdjustments() {
       )}
 
       <CreateDialog open={createOpen} onClose={() => setCreateOpen(false)} />
-    </Page>
+    </div>
   );
 }
 

@@ -305,10 +305,10 @@ export default function AdminRetailerNew() {
         },
       ),
     onSuccess: (r) => {
-      toast.success(`Retailer provisioned: ${r.email}`);
+      toast.success(`Store provisioned: ${r.email}`);
       navigate(`/admin/retailers/${r.retailerId}`);
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Failed to create retailer'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Failed to create store'),
   });
 
   function submit() {
@@ -330,15 +330,15 @@ export default function AdminRetailerNew() {
     <Page>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <div className="kicker text-ink-3">Retailers</div>
-          <h1 className="mt-0.5 text-[22px] font-semibold text-ink leading-tight">Onboard new retailer</h1>
+          <div className="kicker text-ink-3">Stores</div>
+          <h1 className="mt-0.5 text-[22px] font-semibold text-ink leading-tight">Add new store</h1>
           <p className="mt-1 max-w-2xl text-[13.5px] text-ink-3">
             Provision a retailer + first store directly. Bypasses the retailer-submitted application
             flow. Same fields as the public signup form so the retailer record matches an organic signup.
           </p>
         </div>
         <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-          <Link to="/admin/retailers">Back</Link>
+          <Link to="/admin/stores">Back</Link>
         </Button>
       </div>
 
@@ -657,7 +657,7 @@ export default function AdminRetailerNew() {
             iconLeft={<Check className="size-4" />}
             onClick={submit}
           >
-            Provision retailer
+            Provision store
           </Button>
         ) : (
           <Button variant="ink" iconRight={<ArrowRight className="size-3.5" />} onClick={advance}>

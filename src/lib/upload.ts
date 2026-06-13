@@ -26,7 +26,13 @@ type JsonResponse =
  */
 export async function uploadMedia(
   file: File,
-  options: { folder?: string; onProgress?: (pct: number) => void; purpose?: 'listing-gallery' } = {},
+  options: {
+    folder?: string;
+    onProgress?: (pct: number) => void;
+    purpose?: 'listing-gallery' | 'listing-description';
+    /** Hit the retailer media endpoint so the upload is recorded in the library. */
+    recordToLibrary?: boolean;
+  } = {},
 ): Promise<UploadResult> {
   const token = getToken();
   const fd = new FormData();
@@ -35,7 +41,8 @@ export async function uploadMedia(
   if (options.folder) params.set('folder', options.folder);
   if (options.purpose) params.set('purpose', options.purpose);
   const qs = params.toString() ? `?${params}` : '';
-  const url = `${BASE}/uploads${qs}`;
+  // Retailer media library records the asset; generic /uploads is fire-and-forget.
+  const url = `${BASE}${options.recordToLibrary ? '/retailer/media' : '/uploads'}${qs}`;
 
   if (options.onProgress) {
     return new Promise<UploadResult>((resolve, reject) => {

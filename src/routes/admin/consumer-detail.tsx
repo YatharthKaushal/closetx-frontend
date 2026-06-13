@@ -69,7 +69,7 @@ export default function AdminConsumerDetail() {
   return (
     <Page>
       <Link
-        to="/admin/consumers"
+        to="/admin/users?tab=consumers"
         className="mb-3 inline-flex items-center gap-1.5 text-[12px] uppercase tracking-[0.16em] text-ink-3 hover:text-ink"
       >
         <ArrowLeft className="size-3.5" />
@@ -227,12 +227,12 @@ export default function AdminConsumerDetail() {
           <RelatedLink title="Refunds for this consumer" href={`/admin/refund-reconciliation?consumerId=${id}`} />
         </TabsContent>
         <TabsContent value="issues">
-          <RelatedLink title="Issues opened by or against this consumer" href={`/admin/issues?consumerId=${id}`} />
+          <RelatedLink title="Disputes opened by or against this consumer" href={`/admin/disputes?consumerId=${id}`} />
         </TabsContent>
         <TabsContent value="posts">
           <div className="space-y-2">
-            <RelatedLink title="Community posts" href="/admin/community-moderation" />
-            <RelatedLink title="Product reviews" href="/admin/reviews-moderation" />
+            <RelatedLink title="Community posts" href="/admin/customers?tab=community" />
+            <RelatedLink title="Product reviews" href="/admin/customers?tab=reviews" />
           </div>
         </TabsContent>
         <TabsContent value="bans">

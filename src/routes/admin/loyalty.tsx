@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { formatPaise } from '@/lib/status';
 import type { LoyaltyConfig } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label, FieldError } from '@/components/ui/label';
@@ -23,7 +23,7 @@ type FormValues = {
   quiz_completion_points: number;
 };
 
-export default function AdminLoyalty() {
+export function LoyaltyPanel() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -65,11 +65,11 @@ export default function AdminLoyalty() {
   const maxFractionBp = Number(watch('max_redeem_fraction_bp')) || 0;
 
   return (
-    <Page>
-      <PageHeader
-        title={<>Loyalty config</>}
-        description="Earn rate, point value, redemption caps, and acquisition bonuses. Changes take effect immediately."
-      />
+    <div>
+      <p className="mb-6 max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+        Earn rate, point value, redemption caps, and acquisition bonuses. Changes take effect
+        immediately.
+      </p>
 
       {isLoading ? (
         <Skeleton className="h-96" />
@@ -158,7 +158,7 @@ export default function AdminLoyalty() {
           </aside>
         </form>
       )}
-    </Page>
+    </div>
   );
 }
 

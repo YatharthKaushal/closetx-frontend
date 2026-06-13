@@ -1,920 +1,364 @@
-import { useState } from 'react';
+/**
+ * Full order detail page (double-click / "Full page"). Reuses the shared
+ * action-system + section components so labels/design match the board, history,
+ * and sheet — and adds the comprehensive blocks (full payment, customer, returns
+ * verification, refunds, disputes) plus detail-only actions.
+ */
+import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
-  AlertTriangle,
   ArrowLeft,
-  Box,
   Check,
-  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
-  Download,
-  FileText,
-  Hourglass,
-  ImageOff,
   KeyRound,
   RotateCcw,
-  Send,
   Truck,
   User,
   XCircle,
 } from 'lucide-react';
-import { toast } from 'sonner';
-import { api, ApiError, BASE } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { api, ApiError } from '@/lib/api';
+import type { OrderDetail, OrderDispute, OrderListRow, Return } from '@/lib/types';
 import {
-  deliveryMethodLabel,
+  actorLabel,
   formatAge,
   formatPaise,
+  issueDecisionLabel,
+  issueStatusMeta,
   orderStatusMeta,
-  paymentMethodLabel,
-  paymentStatusMeta,
-  refundDisbursementStatusMeta,
-  refundStatusMeta,
   returnDecisionMeta,
 } from '@/lib/status';
-import type { OrderDetail, OrderStatus, Return } from '@/lib/types';
-import { Page } from '@/components/ui/page';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { deriveOrderActions } from '@/lib/order-actions';
+import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { CopyableId } from '@/components/ui/copyable-id';
-import { Timeline } from '@/components/ui/timeline';
-import { ReturnDialog } from '@/components/ui/return-dialog';
-import { DoorVisitDialog } from '@/components/ui/door-visit-dialog';
-import { MediaGallery } from '@/components/ui/media-gallery';
 import { AcceptanceCountdown } from '@/components/retailer/acceptance-countdown';
+import { useOrderActionRunner } from '@/components/retailer/orders/use-order-action-runner';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+  CostSection,
+  ItemsSection,
+  OrderActionBar,
+  PaymentStatusLine,
+  RefundsSection,
+  TransitSection,
+} from '@/components/retailer/orders/order-sections';
 
 export default function RetailerOrderDetail() {
-  const { id } = useParams<{ id: string }>();
+  const { id = '' } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const qc = useQueryClient();
-  const [confirmAction, setConfirmAction] = useState<null | { kind: 'undelivered' | 'request-cancel'; title: string }>(null);
-  const [reason, setReason] = useState('');
-  const [handoverOpen, setHandoverOpen] = useState(false);
-  const [handoverAgentName, setHandoverAgentName] = useState('');
-  const [handoverAgentPhone, setHandoverAgentPhone] = useState('');
-  const [handoverErrors, setHandoverErrors] = useState<{ name?: string; phone?: string }>({});
+  const runner = useOrderActionRunner(id);
+
+  // Prev/next: observe-only subscriber to the board's cached list.
+  const listQuery = useQuery({
+    queryKey: ['retailer', 'orders', 'board'],
+    queryFn: () => api<OrderListRow[]>('/retailer/orders'),
+    enabled: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const snap = listQuery.data;
+  const idx = snap?.findIndex((o) => o.id === id) ?? -1;
+  const prev = idx > 0 ? snap![idx - 1] : null;
+  const next = snap && idx >= 0 && idx < snap.length - 1 ? snap[idx + 1] : null;
+  const navHint = 'Open this order from the board to use prev / next.';
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['retailer', 'orders', id],
+    queryKey: ['retailer', 'order', id],
     queryFn: () => api<OrderDetail>(`/retailer/orders/${id}`),
     enabled: !!id,
     refetchInterval: 4000,
   });
 
-  function makeAction(path: string) {
-    return useMutation({
-      mutationFn: (body?: Record<string, unknown>) =>
-        api(`/retailer/orders/${id}/${path}`, { method: 'POST', body: body ?? {} }),
-      onSuccess: () => {
-        toast.success('Updated');
-        void qc.invalidateQueries({ queryKey: ['retailer', 'orders'] });
-      },
-      onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Action failed'),
-    });
+  function invalidateOrder() {
+    void qc.invalidateQueries({ queryKey: ['retailer', 'order', id] });
+    void qc.invalidateQueries({ queryKey: ['retailer', 'orders'] });
   }
 
-  const accept = makeAction('accept');
-  const pack = makeAction('pack');
-  const handover = makeAction('handover');
-  const depart = makeAction('depart');
-  const markDelivered = makeAction('mark-delivered');
-  const markUndelivered = makeAction('mark-undelivered');
-  const requestCancel = makeAction('request-cancel');
-
-  const [counterReturnOpen, setCounterReturnOpen] = useState(false);
-  const [doorVisitOpen, setDoorVisitOpen] = useState(false);
-
   const verify = useMutation({
-    mutationFn: ({ returnId, decision }: { returnId: string; decision: 'accepted' | 'rejected' }) =>
-      api(`/retailer/returns/${returnId}/verify`, { method: 'POST', body: { decision } }),
-    onSuccess: (_r, vars) => {
-      toast.success(`Return ${vars.decision}`);
-      void qc.invalidateQueries({ queryKey: ['retailer', 'orders', id] });
+    mutationFn: (returnId: string) =>
+      api(`/retailer/returns/${returnId}/verify`, { method: 'POST', body: { decision: 'accepted' } }),
+    onSuccess: () => {
+      toast.success('Return accepted — refund issued');
+      invalidateOrder();
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Verify failed'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Accept failed'),
   });
+
+  // Declining a return raises a dispute and holds funds until an admin decides.
+  const decline = useMutation({
+    mutationFn: (v: { returnId: string; reasonNote?: string }) =>
+      api(`/retailer/returns/${v.returnId}/decline`, { method: 'POST', body: { reasonNote: v.reasonNote } }),
+    onSuccess: () => {
+      toast.success('Return declined — dispute opened, funds held pending admin review');
+      invalidateOrder();
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Decline failed'),
+  });
+
+
+  const actions = useMemo(
+    () => (data ? deriveOrderActions(data, { detail: data, surface: 'page' }) : []),
+    [data],
+  );
+  const pendingReturns = (data?.returns ?? []).filter((r) => r.storeDecision === 'pending');
 
   if (!id) return null;
 
   return (
     <Page>
-      <div className="mb-3">
-        <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-          <Link to="/retailer/orders">Orders</Link>
-        </Button>
-      </div>
+      <PageHeader
+        kicker="Order"
+        title={data ? orderStatusMeta(data.status).label : 'Order'}
+        actions={
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="icon-sm" disabled={!prev} title={prev ? `Order ${prev.id}` : navHint} onClick={() => prev && navigate(`/retailer/orders/${prev.id}`)}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" disabled={!next} title={next ? `Order ${next.id}` : navHint} onClick={() => next && navigate(`/retailer/orders/${next.id}`)}>
+              <ChevronRight className="size-4" />
+            </Button>
+            <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
+              <Link to="/retailer/orders">Board</Link>
+            </Button>
+          </div>
+        }
+      />
 
-      {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-64" />
-        </div>
-      ) : isError || !data ? (
-        <p className="text-[13px] text-danger">Couldn't load this order.</p>
+      {isError ? (
+        <Card><CardContent className="py-10 text-center text-ink-3">Order not found.</CardContent></Card>
+      ) : isLoading || !data ? (
+        <Card><CardContent className="py-10 text-center text-ink-3">Loading…</CardContent></Card>
       ) : (
         <>
-          <Detail
-            order={data}
-            actions={{
-              accept: () => accept.mutate({}),
-              pack: () => pack.mutate({}),
-              handover: () => {
-                setHandoverAgentName('');
-                setHandoverAgentPhone('');
-                setHandoverErrors({});
-                setHandoverOpen(true);
-              },
-              depart: () => depart.mutate({}),
-              markDelivered: () => markDelivered.mutate({}),
-              openUndelivered: () => {
-                setConfirmAction({ kind: 'undelivered', title: 'Mark undelivered' });
-                setReason('');
-              },
-              openRequestCancel: () => {
-                setConfirmAction({ kind: 'request-cancel', title: 'Request cancellation' });
-                setReason('');
-              },
-              openCounterReturn: () => setCounterReturnOpen(true),
-              openDoorVisit: () => setDoorVisitOpen(true),
-            }}
-            pending={{
-              accept: accept.isPending,
-              pack: pack.isPending,
-              handover: handover.isPending,
-              depart: depart.isPending,
-              markDelivered: markDelivered.isPending,
-            }}
-            onVerify={(returnId, decision) => verify.mutate({ returnId, decision })}
-            verifying={verify.isPending}
-          />
-          <ReturnDialog
-            items={data.items}
-            open={counterReturnOpen}
-            onOpenChange={setCounterReturnOpen}
-            endpoint={`/retailer/orders/${data.id}/returns/open-counter`}
-            title="Counter return"
-            description="Customer is at the counter. Pick the items they're returning. Each item becomes a pending return — verify it next to issue the refund."
-            onSuccess={() => {
-              void qc.invalidateQueries({ queryKey: ['retailer', 'orders', id] });
-            }}
-          />
-          <DoorVisitDialog
-            orderId={data.id}
-            items={data.items}
-            doorWindowExpiresAt={data.doorWindowExpiresAt ?? null}
-            doorWindowExtendedAt={data.doorWindowExtendedAt ?? null}
-            open={doorVisitOpen}
-            onOpenChange={setDoorVisitOpen}
-            onClosed={() => qc.invalidateQueries({ queryKey: ['retailer', 'orders'] })}
-          />
-        </>
-      )}
-
-      <Dialog open={handoverOpen} onOpenChange={setHandoverOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hand over to delivery agent</DialogTitle>
-            <DialogDescription>
-              Capture the agent picking this order up. Recorded against the order's chain of custody.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="agentName" required>Agent name</Label>
-              <Input
-                id="agentName"
-                value={handoverAgentName}
-                onChange={(e) => setHandoverAgentName(e.target.value)}
-                placeholder="e.g. Ramesh K."
-                autoFocus
-              />
-              {handoverErrors.name && (
-                <p className="mt-1 text-[11.5px] text-danger">{handoverErrors.name}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="agentPhone" required>Agent phone</Label>
-              <Input
-                id="agentPhone"
-                inputMode="numeric"
-                maxLength={10}
-                value={handoverAgentPhone}
-                onChange={(e) => setHandoverAgentPhone(e.target.value.replace(/\D/g, ''))}
-                placeholder="10-digit mobile"
-              />
-              {handoverErrors.phone && (
-                <p className="mt-1 text-[11.5px] text-danger">{handoverErrors.phone}</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setHandoverOpen(false)}>Cancel</Button>
-            <Button
-              variant="accent"
-              loading={handover.isPending}
-              onClick={() => {
-                const errs: { name?: string; phone?: string } = {};
-                const name = handoverAgentName.trim();
-                const phone = handoverAgentPhone.trim();
-                if (name.length < 2) errs.name = 'Enter the agent\'s name (≥ 2 characters)';
-                if (!/^[6-9]\d{9}$/.test(phone)) errs.phone = 'Enter a valid 10-digit Indian mobile';
-                if (Object.keys(errs).length > 0) {
-                  setHandoverErrors(errs);
-                  return;
-                }
-                handover.mutate(
-                  { agentName: name, agentPhone: phone },
-                  {
-                    onSuccess: () => setHandoverOpen(false),
-                  },
-                );
-              }}
-            >
-              Confirm handover
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!confirmAction} onOpenChange={(o) => { if (!o) setConfirmAction(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{confirmAction?.title}</DialogTitle>
-            <DialogDescription>
-              {confirmAction?.kind === 'undelivered'
-                ? 'Logs a delivery attempt with this reason. If retry budget is left, status returns to "out for delivery". Otherwise the order returns to your store.'
-                : 'Logs a cancellation request. Admin must approve before the order is actually cancelled.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div>
-            <Label htmlFor="reason" required>Reason</Label>
-            <Input
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder={confirmAction?.kind === 'undelivered' ? 'e.g. Customer not at door' : 'e.g. Stockout'}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirmAction(null)}>Cancel</Button>
-            <Button
-              variant="accent"
-              disabled={reason.trim().length < 3}
-              loading={confirmAction?.kind === 'undelivered' ? markUndelivered.isPending : requestCancel.isPending}
-              onClick={() => {
-                if (!confirmAction) return;
-                if (confirmAction.kind === 'undelivered') {
-                  markUndelivered.mutate({ reason: reason.trim() });
-                } else {
-                  requestCancel.mutate({ reason: reason.trim() });
-                }
-                setConfirmAction(null);
-              }}
-            >
-              Submit
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Page>
-  );
-}
-
-function Detail({
-  order,
-  actions,
-  pending,
-  onVerify,
-  verifying,
-}: {
-  order: OrderDetail;
-  actions: Record<string, () => void>;
-  pending: Record<string, boolean>;
-  onVerify: (returnId: string, decision: 'accepted' | 'rejected') => void;
-  verifying: boolean;
-}) {
-  const meta = orderStatusMeta(order.status);
-  const primaryAction = pickPrimaryAction(order.status);
-  const canCounterReturn =
-    order.status === 'delivered' &&
-    !!order.deliveredAt &&
-    Date.now() - new Date(order.deliveredAt).getTime() < 7 * 24 * 60 * 60 * 1000;
-  const pendingReturns = (order.returns ?? []).filter((r) => r.storeDecision === 'pending');
-
-  return (
-    <>
-      {/* Status hero */}
-      <Card className="accent-strip relative mb-4">
-        <CardContent className="p-5 sm:p-6">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <Badge tone={meta.tone} pulse={meta.pulse}>{meta.label}</Badge>
-            <CopyableId value={order.id} label="order id" />
-            <span className="text-[11.5px] text-ink-3">placed {formatAge(order.placedAt)}</span>
-          </div>
-          <h1 className="text-[18px] sm:text-[20px] font-semibold text-ink leading-snug">
-            {nextStepHeading(order.status)}
-          </h1>
-          <p className="text-[13px] text-ink-3 mt-1">
-            {order.consumerNameSnap} · {deliveryMethodLabel(order.deliveryMethod)} · {paymentMethodLabel(order.paymentMethod)}
-          </p>
-
-          {(order.status === 'routing' || order.status === 'pending') && (
-            <AcceptanceCountdown deadlineAt={order.acceptanceDeadlineAt ?? null} />
-          )}
-
-          {/* §9 — try-on countdown surfaced in the hero on every active door visit. */}
-          {order.status === 'at_door' && order.doorWindowExpiresAt && (
-            <AcceptanceCountdown
-              deadlineAt={order.doorWindowExpiresAt}
-              label="Try-on window"
-            />
-          )}
-
-          {primaryAction && (
-            <Button
-              variant="accent"
-              size="lg"
-              className="mt-4 w-full sm:w-auto"
-              iconLeft={primaryAction.icon}
-              loading={pending[primaryAction.id] === true}
-              onClick={actions[primaryAction.id]}
-            >
-              {primaryAction.label}
-            </Button>
-          )}
-
-          {/* Secondary actions */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {order.status === 'out_for_delivery' && (
-              <Button
-                variant="outline"
-                size="sm"
-                iconLeft={<XCircle className="size-3.5" />}
-                onClick={actions.openUndelivered}
-              >
-                Mark undelivered
-              </Button>
-            )}
-            {!['cancelled', 'closed', 'delivered', 'payment_failed'].includes(order.status) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                iconLeft={<AlertTriangle className="size-3.5" />}
-                onClick={actions.openRequestCancel}
-              >
-                Request cancellation
-              </Button>
-            )}
-            {canCounterReturn && (
-              <Button
-                variant="outline"
-                size="sm"
-                iconLeft={<RotateCcw className="size-3.5" />}
-                onClick={actions.openCounterReturn}
-              >
-                Counter return
-              </Button>
-            )}
-            {order.status === 'at_door' && (
-              <Button
-                variant="accent"
-                size="sm"
-                onClick={actions.openDoorVisit}
-              >
-                Start door visit
-              </Button>
-            )}
-            <TaxInvoiceButton orderId={order.id} />
-            <RaiseIssueButton orderId={order.id} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pending verification panel */}
-      {pendingReturns.length > 0 && (
-        <Card className="mb-4 accent-strip relative">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RotateCcw className="size-4" /> Verify returns ({pendingReturns.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y divide-line">
-              {pendingReturns.map((r) => (
-                <ReturnVerifyRow key={r.id} ret={r} onVerify={onVerify} verifying={verifying} />
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Refunds related to this order */}
-      {(order.refunds ?? []).length > 0 && (
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Refunds</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {(order.refunds ?? []).map((rf) => {
-                const m = refundStatusMeta(rf.status);
-                return (
-                  <li key={rf.id} className="space-y-2">
-                    <div className="flex items-center justify-between text-[12.5px]">
-                      <div className="flex items-center gap-2">
-                        <Badge tone={m.tone}>{m.label}</Badge>
-                        <CopyableId value={rf.id} label="refund id" />
-                      </div>
-                      <span className="font-mono tabular-nums">{formatPaise(rf.totalRefundPaise)}</span>
-                    </div>
-                    {rf.disbursements.length > 0 && (
-                      <ul className="rounded-md border border-line bg-bg-2/30 p-2 space-y-1.5">
-                        {rf.disbursements.map((d) => {
-                          const dm = refundDisbursementStatusMeta(d.status);
-                          return (
-                            <li key={d.id} className="flex items-center justify-between text-[11.5px]">
-                              <div className="flex items-center gap-2">
-                                <Badge tone={dm.tone}>{dm.label}</Badge>
-                                <span className="capitalize text-ink-2">{d.destination.replace(/_/g, ' ')}</span>
-                                {d.gatewayRef && <span className="font-mono text-[10.5px] text-ink-4">· {d.gatewayRef}</span>}
-                              </div>
-                              <span className="font-mono tabular-nums text-ink">{formatPaise(d.amountPaise)}</span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Items ({order.items.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="divide-y divide-line">
-                {order.items.map((it) => (
-                  <li key={it.id} className="flex gap-3 py-3">
-                    <div className="size-14 shrink-0 rounded border border-line bg-bg-2 grid place-items-center overflow-hidden">
-                      {it.galleryImageSnap ? (
-                        <img src={it.galleryImageSnap} alt={it.listingNameSnap} className="size-full object-cover" />
-                      ) : (
-                        <ImageOff className="size-5 text-ink-4" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-ink truncate">{it.listingNameSnap}</div>
-                      <div className="text-[11.5px] text-ink-3 mt-0.5">
-                        {it.brandSnap} · {it.attributesLabelSnap}
-                      </div>
-                      <div className="text-[11.5px] text-ink-3 font-mono mt-0.5 truncate">SKU: {it.variantId}</div>
-                    </div>
-                    <div className="text-right shrink-0 font-mono text-[13px] tabular-nums text-ink">
-                      {formatPaise(it.unitPricePaise)} × {it.qty}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Customer & delivery</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-[13px]">
-              <Row icon={<User className="size-3.5" />} k="Customer" v={`${order.consumerNameSnap}`} />
-              <Row icon={<Send className="size-3.5" />} k="Phone" v={order.consumerPhoneSnap} />
-              {order.deliveryMethod !== 'pickup' && (
-                <Row icon={<Truck className="size-3.5" />} k="Address" v={
-                  <span className="text-right">
-                    {order.addressLine1Snap}
-                    {order.addressLine2Snap && <>, {order.addressLine2Snap}</>}
-                    <br />
-                    {order.addressCitySnap} {order.addressPincodeSnap}
-                  </span>
-                } />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* §9 — pickup-only slot card. Staff needs the slot window + handover
-              code visible without opening the order detail dialog. */}
-          {order.deliveryMethod === 'pickup' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Pickup slot</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-[13px]">
-                {order.pickupSlotStart && order.pickupSlotEnd ? (
-                  <>
-                    <Row
-                      icon={<Clock className="size-3.5" />}
-                      k="Window"
-                      v={
-                        <span className="text-right">
-                          {new Date(order.pickupSlotStart).toLocaleString(undefined, {
-                            weekday: 'short',
-                            day: 'numeric',
-                            month: 'short',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
-                          {' '}–{' '}
-                          {new Date(order.pickupSlotEnd).toLocaleTimeString(undefined, {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      }
-                    />
-                    <Row
-                      icon={<Hourglass className="size-3.5" />}
-                      k="Starts in"
-                      v={
-                        <AcceptanceCountdown
-                          deadlineAt={order.pickupSlotStart}
-                          variant="inline"
-                          label="Pickup slot starts"
-                        />
-                      }
-                    />
-                  </>
-                ) : (
-                  <Row icon={<Clock className="size-3.5" />} k="Window" v="—" />
-                )}
-                {order.pickupCode && (
-                  <Row
-                    icon={<KeyRound className="size-3.5" />}
-                    k="Handover code"
-                    v={
-                      <span className="font-mono tabular-nums text-[14px] font-semibold text-ink">
-                        {order.pickupCode}
-                      </span>
-                    }
-                  />
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader><CardTitle>Total</CardTitle></CardHeader>
-            <CardContent className="space-y-1.5 text-[13px]">
-              <div className="flex justify-between"><span className="text-ink-3">Items</span><span className="font-mono tabular-nums">{formatPaise(order.itemsSubtotalPaise)}</span></div>
-              {order.couponPaise > 0 && <div className="flex justify-between"><span className="text-ink-3">Coupon</span><span className="font-mono tabular-nums text-success">−{formatPaise(order.couponPaise)}</span></div>}
-              <div className="flex justify-between"><span className="text-ink-3">Tax</span><span className="font-mono tabular-nums">{formatPaise(order.taxPaise)}</span></div>
-              {order.deliveryFeePaise > 0 && <div className="flex justify-between"><span className="text-ink-3">Delivery</span><span className="font-mono tabular-nums">{formatPaise(order.deliveryFeePaise)}</span></div>}
-              <hr className="border-line my-2" />
-              <div className="flex justify-between text-[15px] font-semibold">
-                <span className="text-ink">Total</span>
-                <span className="font-mono tabular-nums text-ink">{formatPaise(order.grandTotalPaise)}</span>
+          {/* Status hero + action bar */}
+          <Card className="mb-4 accent-strip relative">
+            <CardContent className="space-y-3 pt-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={orderStatusMeta(data.status).tone} pulse={orderStatusMeta(data.status).pulse}>
+                  {orderStatusMeta(data.status).label}
+                </Badge>
+                <CopyableId value={data.id} label="order id" />
+                <span className="text-[11.5px] text-ink-3">{formatAge(data.placedAt)}</span>
               </div>
-              {order.payments[0] && (
-                <div className="mt-2 text-[11.5px] text-ink-3">
-                  Payment: <Badge tone={paymentStatusMeta(order.payments[0].status).tone}>{paymentStatusMeta(order.payments[0].status).label}</Badge>
+              {data.status === 'routing' && data.acceptanceDeadlineAt && (
+                <AcceptanceCountdown deadlineAt={data.acceptanceDeadlineAt} label="Acceptance window" />
+              )}
+              {data.status === 'at_door' && data.doorWindowExpiresAt && (
+                <AcceptanceCountdown deadlineAt={data.doorWindowExpiresAt} label="Try-on window" />
+              )}
+              <OrderActionBar actions={actions} runner={runner} />
+              {data.openDispute && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-[12.5px]">
+                  <span className="text-warning-strong">
+                    A dispute is open on this order — funds are held until an admin
+                    decides. No further refund actions until it's resolved.
+                  </span>
+                  <Button asChild variant="outline" size="xs" className="shrink-0">
+                    <Link to={`/retailer/disputes/${data.openDispute.id}`}>View dispute</Link>
+                  </Button>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Timeline transitions={order.transitions} />
-              {order.deliveryAttempts.length > 0 && (
-                <>
-                  <hr className="border-line my-3" />
-                  <div className="kicker mb-2">Delivery attempts</div>
-                  <ul className="space-y-1 text-[12px]">
-                    {order.deliveryAttempts.map((a) => (
-                      <li key={a.id} className="flex items-center justify-between">
-                        <span>#{a.attemptNumber} · {a.outcome}</span>
-                        <span className="text-ink-3">{formatAge(a.attemptedAt)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </>
+          {/* Returns verification */}
+          {pendingReturns.length > 0 && (
+            <Card className="mb-4 accent-strip relative">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><RotateCcw className="size-4" /> Verify returns ({pendingReturns.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="divide-y divide-line">
+                  {pendingReturns.map((r) => (
+                    <ReturnVerifyRow
+                      key={r.id}
+                      ret={r}
+                      onAccept={(rid) => verify.mutate(rid)}
+                      onDecline={(rid) => decline.mutate({ returnId: rid })}
+                      busy={verify.isPending || decline.isPending}
+                    />
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Balanced masonry — cards flow to fill both columns evenly so no
+              column is left with dead space when content height is uneven. */}
+          <div className="gap-4 lg:columns-2 [&>*]:mb-4 [&>*]:break-inside-avoid">
+            <Card>
+              <CardHeader><CardTitle>Items ({data.items.length})</CardTitle></CardHeader>
+              <CardContent><ItemsSection detail={data} /></CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Payment</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <PaymentStatusLine detail={data} />
+                <CostSection detail={data} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Customer &amp; delivery</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-[13px]">
+                <Row icon={<User className="size-3.5" />} k="Customer" v={data.consumerNameSnap} />
+                <Row icon={<User className="size-3.5" />} k="Phone" v={data.consumerPhoneSnap} />
+                {data.consumerEmailSnap && <Row icon={<User className="size-3.5" />} k="Email" v={data.consumerEmailSnap} />}
+                {data.deliveryMethod !== 'pickup' && (
+                  <Row icon={<Truck className="size-3.5" />} k="Address" v={
+                    <span className="text-right">
+                      {data.addressLine1Snap}{data.addressLine2Snap && <>, {data.addressLine2Snap}</>}<br />
+                      {data.addressCitySnap} {data.addressPincodeSnap}
+                    </span>
+                  } />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Disputes</CardTitle></CardHeader>
+              <CardContent className="space-y-2.5 text-[13px]">
+                {(data.disputes?.length ?? 0) === 0 ? (
+                  <p className="text-ink-3">No disputes on this order.</p>
+                ) : (
+                  (data.disputes ?? []).map((d) => <DisputeRow key={d.id} dispute={d} />)
+                )}
+              </CardContent>
+            </Card>
+
+            {data.deliveryMethod === 'pickup' && (
+              <Card>
+                <CardHeader><CardTitle>Pickup slot</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-[13px]">
+                  {data.pickupSlotStart && data.pickupSlotEnd ? (
+                    <Row icon={<Clock className="size-3.5" />} k="Window" v={
+                      <span className="text-right">
+                        {new Date(data.pickupSlotStart).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                        {' – '}
+                        {new Date(data.pickupSlotEnd).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    } />
+                  ) : <Row icon={<Clock className="size-3.5" />} k="Window" v="—" />}
+                  {data.pickupCode && (
+                    <Row icon={<KeyRound className="size-3.5" />} k="Handover code" v={<span className="font-mono text-[14px] font-semibold text-ink">{data.pickupCode}</span>} />
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {(data.refunds ?? []).length > 0 && (
+              <Card>
+                <CardHeader><CardTitle>Refunds</CardTitle></CardHeader>
+                <CardContent><RefundsSection detail={data} /></CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader><CardTitle>Timeline</CardTitle></CardHeader>
+              <CardContent><TransitSection detail={data} /></CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {runner.dialogs}
+    </Page>
   );
-}
-
-function pickPrimaryAction(status: OrderStatus): { id: string; label: string; icon: React.ReactNode } | null {
-  switch (status) {
-    case 'routing':
-      return { id: 'accept', label: 'Accept order', icon: <Check className="size-4" /> };
-    case 'accepted':
-      return { id: 'pack', label: 'Mark as packed', icon: <Box className="size-4" /> };
-    case 'packed':
-      return { id: 'handover', label: 'Hand to delivery', icon: <Truck className="size-4" /> };
-    case 'picked_up':
-      return { id: 'depart', label: 'Out for delivery', icon: <Send className="size-4" /> };
-    case 'out_for_delivery':
-      return { id: 'markDelivered', label: 'Mark delivered', icon: <CheckCircle2 className="size-4" /> };
-    case 'undelivered':
-      return null; // System auto-routes; secondary buttons available
-    default:
-      return null;
-  }
-}
-
-function nextStepHeading(status: OrderStatus): string {
-  switch (status) {
-    case 'pending':
-      return 'Awaiting payment confirmation.';
-    case 'confirmed':
-    case 'routing':
-      return 'New order — accept to start fulfilling.';
-    case 'accepted':
-      return 'Pull items, bag them, mark as packed.';
-    case 'packed':
-      return 'Ready for pickup. Hand to your delivery person.';
-    case 'picked_up':
-      return 'Items handed off. Mark when out for delivery.';
-    case 'out_for_delivery':
-      return 'On the way. Mark delivered once handed over.';
-    case 'at_door':
-      return 'At customer door — try-on in progress.';
-    case 'undelivered':
-      return 'Delivery attempt failed. System will retry or return to store.';
-    case 'returning_to_store':
-      return 'Items en route back to your store.';
-    case 'returned_to_store':
-      return 'Items back at store — verify and decide.';
-    case 'delivered':
-      return 'Order delivered successfully.';
-    case 'closed':
-      return 'Order closed — return window has passed.';
-    case 'cancelled':
-      return 'Order cancelled.';
-    case 'payment_failed':
-      return 'Payment did not go through. Awaiting customer retry or admin cancellation.';
-  }
 }
 
 function Row({ icon, k, v }: { icon: React.ReactNode; k: string; v: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-ink-3 inline-flex items-center gap-1.5 shrink-0">{icon} {k}</span>
-      <span className="text-ink text-right">{v}</span>
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-ink-3">{icon} {k}</span>
+      <span className="text-right text-ink">{v}</span>
+    </div>
+  );
+}
+
+function DisputeRow({ dispute }: { dispute: OrderDispute }) {
+  const meta = issueStatusMeta(dispute.status);
+  const open = dispute.status !== 'decided' && dispute.status !== 'closed' && dispute.status !== 'resolved';
+  return (
+    <div
+      className={
+        'rounded-md border px-3 py-2.5 ' +
+        (open ? 'border-warning/40 bg-warning-soft/40' : 'border-line bg-bg-2/30')
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={meta.tone} pulse={open}>{meta.label}</Badge>
+        {dispute.heldAmountPaise != null && dispute.heldAmountPaise > 0 && (
+          <Badge tone="warning" flat>Held {formatPaise(dispute.heldAmountPaise)}</Badge>
+        )}
+        <span className="ml-auto text-[11px] text-ink-4">{formatAge(dispute.createdAt)}</span>
+      </div>
+      <div className="mt-1.5 truncate font-medium text-ink">{dispute.subject}</div>
+      <div className="mt-0.5 text-[11.5px] text-ink-3">
+        Opened by {actorLabel(dispute.openedByActorType)}
+        {dispute.returnId && <> · on a return</>}
+      </div>
+      {dispute.decision && (
+        <div className="mt-1.5 text-[12px]">
+          <span className="text-ink-3">Decision: </span>
+          <span className="font-medium text-ink">{issueDecisionLabel(dispute.decision)}</span>
+          {dispute.decisionNote && <span className="text-ink-3 italic"> — {dispute.decisionNote}</span>}
+        </div>
+      )}
+      <div className="mt-2">
+        <Button asChild variant="outline" size="xs">
+          <Link to={`/retailer/disputes/${dispute.id}`}>View dispute</Link>
+        </Button>
+      </div>
     </div>
   );
 }
 
 function ReturnVerifyRow({
   ret,
-  onVerify,
-  verifying,
+  onAccept,
+  onDecline,
+  busy,
 }: {
   ret: Return;
-  onVerify: (returnId: string, decision: 'accepted' | 'rejected') => void;
-  verifying: boolean;
+  onAccept: (returnId: string) => void;
+  onDecline: (returnId: string) => void;
+  busy: boolean;
 }) {
   const meta = returnDecisionMeta(ret.storeDecision);
   return (
-    <li className="py-2.5 flex items-start justify-between gap-2">
+    <li className="flex items-start justify-between gap-2 py-2.5">
       <div className="min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone={meta.tone}>{meta.label}</Badge>
           <span className="text-[11.5px] text-ink-3">
             {ret.kind === 'door_return' ? 'door return' : 'standard return'} · {formatAge(ret.openedAt)}
           </span>
         </div>
-        {ret.reasonText && <div className="text-[12px] text-ink-3 italic mt-1">{ret.reasonText}</div>}
-        {ret.agentDisposition && (
-          <div className="text-[11.5px] text-ink-3 mt-1">
-            Agent: <span className="font-mono">{ret.agentDisposition}</span>
-          </div>
-        )}
+        {ret.reasonText && <div className="mt-1 text-[12px] italic text-ink-3">{ret.reasonText}</div>}
+        {ret.agentDisposition && <div className="mt-1 text-[11.5px] text-ink-3">Agent: <span className="font-mono">{ret.agentDisposition}</span></div>}
       </div>
-      <div className="flex gap-1 shrink-0">
+      <div className="flex shrink-0 gap-1">
         <Button
           size="sm"
           variant="outline"
           iconLeft={<XCircle className="size-3" />}
-          disabled={verifying}
-          onClick={() => onVerify(ret.id, 'rejected')}
+          disabled={busy}
+          title="Opens a dispute and holds funds until an admin decides"
+          onClick={() => onDecline(ret.id)}
         >
-          Reject
+          Decline &amp; dispute
         </Button>
-        <Button
-          size="sm"
-          variant="accent"
-          iconLeft={<Check className="size-3" />}
-          disabled={verifying}
-          onClick={() => onVerify(ret.id, 'accepted')}
-        >
+        <Button size="sm" variant="accent" iconLeft={<Check className="size-3" />} disabled={busy} onClick={() => onAccept(ret.id)}>
           Accept (refund)
         </Button>
       </div>
     </li>
-  );
-}
-
-interface RetailerInvoiceLite {
-  id: string;
-  number: string;
-  kind: string;
-  pdfUrl: string | null;
-}
-
-function TaxInvoiceButton({ orderId }: { orderId: string }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['retailer', 'invoices', 'for-order', orderId],
-    queryFn: () =>
-      api<RetailerInvoiceLite[]>(
-        `/retailer/invoices?orderId=${encodeURIComponent(orderId)}&kind=invoice&limit=5`,
-      ),
-  });
-  if (isLoading) return null;
-  const inv = (data ?? []).find((i) => i.kind === 'invoice');
-  if (!inv) {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        disabled
-        iconLeft={<FileText className="size-3.5" />}
-        title="Tax invoice not generated yet (issues after delivery)"
-      >
-        Tax invoice
-      </Button>
-    );
-  }
-
-  function downloadPdf() {
-    if (!inv) return;
-    const url = `${BASE}/retailer/invoices/${inv.id}/pdf`;
-    const token = getToken();
-    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((r) => {
-        if (!r.ok) throw new Error('Download failed');
-        return r.blob();
-      })
-      .then((blob) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `${inv.number}.pdf`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
-      .catch(() => toast.error('Could not download tax invoice'));
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      iconLeft={<Download className="size-3.5" />}
-      onClick={downloadPdf}
-      title={`Download ${inv.number}`}
-    >
-      Tax invoice ({inv.number})
-    </Button>
-  );
-}
-
-function RaiseIssueButton({ orderId }: { orderId: string }) {
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const [evidenceUrls, setEvidenceUrls] = useState<string[]>([]);
-  const [form, setForm] = useState({
-    kind: 'complaint' as 'query' | 'complaint' | 'dispute',
-    subject: '',
-    description: '',
-  });
-  const create = useMutation({
-    mutationFn: () =>
-      api<{ issueId: string }>('/retailer/issues', {
-        method: 'POST',
-        body: {
-          kind: form.kind,
-          orderId,
-          subject: form.subject.trim(),
-          description: form.description.trim(),
-          evidence: evidenceUrls,
-        },
-      }),
-    onSuccess: (r) => {
-      toast.success(`Issue opened (${form.kind})`);
-      setOpen(false);
-      setForm({ kind: 'complaint', subject: '', description: '' });
-      setEvidenceUrls([]);
-      navigate(`/retailer/issues/${r.issueId}`);
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Could not open issue'),
-  });
-  const valid = form.subject.trim().length > 0 && form.description.trim().length > 0;
-  return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        iconLeft={<AlertTriangle className="size-3.5" />}
-        onClick={() => setOpen(true)}
-      >
-        Raise issue
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Open issue against this order</DialogTitle>
-            <DialogDescription>
-              Admin sees the issue in the queue with your store, this order, and the description.
-              Photo upload available via the thread once the issue is open.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label htmlFor="iss-kind" required>Kind</Label>
-              <Select
-                value={form.kind}
-                onValueChange={(v) => setForm((f) => ({ ...f, kind: v as 'query' | 'complaint' | 'dispute' }))}
-              >
-                <SelectTrigger id="iss-kind"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="query">Query</SelectItem>
-                  <SelectItem value="complaint">Complaint</SelectItem>
-                  <SelectItem value="dispute">Dispute</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="iss-subject" required>Subject</Label>
-              <Input
-                id="iss-subject"
-                value={form.subject}
-                onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
-                placeholder="e.g. Damaged item received"
-                maxLength={200}
-              />
-            </div>
-            <div>
-              <Label htmlFor="iss-desc" required>Description</Label>
-              <textarea
-                id="iss-desc"
-                rows={4}
-                maxLength={5000}
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="What happened? Include any context admin needs to decide."
-                className="w-full rounded border border-line bg-surface p-2 text-[13px]"
-              />
-            </div>
-            <div>
-              <Label>Evidence photos (optional)</Label>
-              <MediaGallery
-                urls={evidenceUrls}
-                onChange={setEvidenceUrls}
-                uploadFolder={`issues/new-${orderId}`}
-                purpose="listing-gallery"
-                maxImages={5}
-                busy={create.isPending}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button
-              variant="ink"
-              disabled={!valid}
-              loading={create.isPending}
-              onClick={() => create.mutate()}
-            >
-              Open issue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }

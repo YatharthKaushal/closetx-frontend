@@ -16,7 +16,6 @@ import type {
   KycReverification,
   PolicyEnforcementAction,
 } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,7 +23,7 @@ import { Empty } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Segmented } from '@/components/ui/segmented';
 import {
   Dialog,
   DialogContent,
@@ -34,38 +33,103 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-export default function AdminCompliance() {
+const COMPLIANCE_STALE_MS = 60_000;
+
+const CATEGORIES = [
+  { value: 'kyc', label: 'KYC due' },
+  { value: 'floor', label: 'Performance issues' },
+  { value: 'exports', label: 'Data exports' },
+  { value: 'deletions', label: 'Account deletions' },
+] as const;
+type Category = (typeof CATEGORIES)[number]['value'];
+
+/**
+ * Single source of truth for the compliance inbox. The four queries are owned
+ * here and shared (by query key) between the in-panel category switcher and the
+ * hub's outer-tab count badge, so badge and list agree by construction and only
+ * one network fetch happens per list. `staleTime` suppresses refetch storms.
+ */
+export function useComplianceData() {
+  const kyc = useQuery({
+    queryKey: ['admin', 'compliance', 'kyc'],
+    queryFn: () => api<KycReverification[]>('/admin/compliance/kyc'),
+    staleTime: COMPLIANCE_STALE_MS,
+  });
+  const floor = useQuery({
+    queryKey: ['admin', 'policy-enforcement'],
+    queryFn: () => api<PolicyEnforcementAction[]>('/admin/compliance/policy-enforcement?limit=100'),
+    staleTime: COMPLIANCE_STALE_MS,
+  });
+  const exports = useQuery({
+    queryKey: ['admin', 'compliance', 'data-exports'],
+    queryFn: () => api<DataExportRequest[]>('/admin/compliance/data-exports'),
+    staleTime: COMPLIANCE_STALE_MS,
+  });
+  const deletions = useQuery({
+    queryKey: ['admin', 'compliance', 'deletions'],
+    queryFn: () => api<AccountDeletionRequest[]>('/admin/compliance/account-deletions'),
+    staleTime: COMPLIANCE_STALE_MS,
+  });
+
+  const floorActive = (floor.data ?? []).filter((a) => a.step !== 'lifted');
+  const exportsActive = (exports.data ?? []).filter(
+    (d) => d.status === 'pending' || d.status === 'building',
+  );
+  const deletionsActive = (deletions.data ?? []).filter((d) => d.status === 'pending');
+
+  const counts: Record<Category, number> = {
+    kyc: kyc.data?.length ?? 0,
+    floor: floorActive.length,
+    exports: exportsActive.length,
+    deletions: deletionsActive.length,
+  };
+
+  return {
+    kyc,
+    floor,
+    exports,
+    deletions,
+    floorActive,
+    counts,
+    total: counts.kyc + counts.floor + counts.exports + counts.deletions,
+  };
+}
+
+/**
+ * The compliance inbox body, mounted as a tab inside the Compliance hub. The
+ * four categories switch via a lightweight Segmented pill row (a secondary
+ * control beneath the hub's primary tab bar — avoids the double-underline a
+ * nested Tabs would create).
+ */
+export function CompliancePanel() {
+  const d = useComplianceData();
+  const [cat, setCat] = useState<Category>('kyc');
+
   return (
-    <Page>
-      <PageHeader
-        kicker="Compliance"
-        title="Compliance queue"
-        description="One inbox for KYC re-verifications, performance-floor breaches, change requests, GDPR exports and account deletions."
+    <div className="space-y-4">
+      <Segmented
+        value={cat}
+        onChange={(v) => setCat(v as Category)}
+        size="md"
+        options={CATEGORIES.map((c) => ({
+          value: c.value,
+          label: d.counts[c.value] ? `${c.label} · ${d.counts[c.value]}` : c.label,
+        }))}
       />
-
-      <Tabs defaultValue="kyc">
-        <TabsList className="overflow-x-auto whitespace-nowrap">
-          <TabsTrigger value="kyc">KYC due</TabsTrigger>
-          <TabsTrigger value="floor">Floor breaches</TabsTrigger>
-          <TabsTrigger value="exports">Data exports</TabsTrigger>
-          <TabsTrigger value="deletions">Account deletions</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="kyc"><KycPanel /></TabsContent>
-        <TabsContent value="floor"><FloorBreachPanel /></TabsContent>
-        <TabsContent value="exports"><DataExportsPanel /></TabsContent>
-        <TabsContent value="deletions"><AccountDeletionsPanel /></TabsContent>
-      </Tabs>
-    </Page>
+      {cat === 'kyc' && <KycPanel data={d.kyc.data} isLoading={d.kyc.isLoading} />}
+      {cat === 'floor' && <FloorBreachPanel rows={d.floorActive} isLoading={d.floor.isLoading} />}
+      {cat === 'exports' && <DataExportsPanel data={d.exports.data} isLoading={d.exports.isLoading} />}
+      {cat === 'deletions' && (
+        <AccountDeletionsPanel data={d.deletions.data} isLoading={d.deletions.isLoading} />
+      )}
+    </div>
   );
 }
 
-function KycPanel() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'compliance', 'kyc'],
-    queryFn: () => api<KycReverification[]>('/admin/compliance/kyc'),
-  });
-  const list = data ?? [];
+function KycPanel({ data, isLoading }: { data: KycReverification[] | undefined; isLoading: boolean }) {
+  const list = [...(data ?? [])].sort(
+    (a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime(),
+  );
   if (isLoading) return <Skeleton className="h-32" />;
   if (list.length === 0) return <Empty kicker="All clear" title="No KYC re-verifications due." />;
   return (
@@ -121,25 +185,19 @@ const BREACH_LABEL: Record<string, string> = {
   policy_violation: 'Policy violation',
 };
 
-function FloorBreachPanel() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'policy-enforcement'],
-    queryFn: () =>
-      api<PolicyEnforcementAction[]>('/admin/compliance/policy-enforcement?limit=100'),
-  });
-  const list = (data ?? []).filter((a) => a.step !== 'lifted');
+function FloorBreachPanel({ rows, isLoading }: { rows: PolicyEnforcementAction[]; isLoading: boolean }) {
   if (isLoading) return <Skeleton className="h-32" />;
-  if (list.length === 0) {
+  if (rows.length === 0) {
     return (
       <Card>
         <CardContent className="p-6">
           <Empty
             kicker="All clear"
-            title="No active performance-floor breaches."
-            description="Issue a new enforcement step from the enforcement screen when you spot a problem."
+            title="No stores are failing their performance targets right now."
+            description="When a store falls below the required standards, take action from the Policy enforcement tab."
             action={
               <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
-                <Link to="/admin/policy-enforcement">Open enforcement</Link>
+                <Link to="/admin/compliance?tab=policy">Go to Policy enforcement</Link>
               </Button>
             }
           />
@@ -151,14 +209,14 @@ function FloorBreachPanel() {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-[12.5px] text-ink-3">
-          Stores currently sitting on a warning, suspension or termination step. Open the enforcement screen to issue a new step or lift an existing one.
+          Stores that fell below the required standards and now have a warning, suspension or termination against them. Use the Policy enforcement tab to add a new action or lift an existing one.
         </p>
         <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
-          <Link to="/admin/policy-enforcement">Open enforcement</Link>
+          <Link to="/admin/compliance?tab=policy">Go to Policy enforcement</Link>
         </Button>
       </div>
       <ul className="space-y-2">
-        {list.map((a) => (
+        {rows.map((a) => (
           <Card key={a.id}>
             <CardContent className="flex flex-wrap items-center gap-3 p-4">
               <div className="min-w-0 flex-1">
@@ -192,7 +250,7 @@ function FloorBreachPanel() {
                 )}
               </div>
               <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
-                <Link to={a.retailerId ? `/admin/retailers/${a.retailerId}` : `/admin/policy-enforcement`}>
+                <Link to={a.retailerId ? `/admin/retailers/${a.retailerId}` : `/admin/compliance?tab=policy`}>
                   Open
                 </Link>
               </Button>
@@ -204,12 +262,8 @@ function FloorBreachPanel() {
   );
 }
 
-function DataExportsPanel() {
+function DataExportsPanel({ data, isLoading }: { data: DataExportRequest[] | undefined; isLoading: boolean }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'compliance', 'data-exports'],
-    queryFn: () => api<DataExportRequest[]>('/admin/compliance/data-exports'),
-  });
   const [building, setBuilding] = useState<DataExportRequest | null>(null);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [failing, setFailing] = useState<DataExportRequest | null>(null);
@@ -231,7 +285,7 @@ function DataExportsPanel() {
 
   const list = data ?? [];
   if (isLoading) return <Skeleton className="h-32" />;
-  if (list.length === 0) return <Empty kicker="All clear" title="No GDPR data export requests pending." />;
+  if (list.length === 0) return <Empty kicker="All clear" title="No data export requests pending." />;
   return (
     <>
       <ul className="space-y-2">
@@ -304,7 +358,7 @@ function DataExportsPanel() {
           <DialogHeader>
             <DialogTitle>Publish archive</DialogTitle>
             <DialogDescription>
-              Paste the signed URL of the built archive. Consumer can download from here.
+              Paste the secure download link for the finished file. The customer can download it from here.
               Default expiry 7 days.
             </DialogDescription>
           </DialogHeader>
@@ -380,18 +434,14 @@ function DataExportsPanel() {
   );
 }
 
-function AccountDeletionsPanel() {
+function AccountDeletionsPanel({ data, isLoading }: { data: AccountDeletionRequest[] | undefined; isLoading: boolean }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'compliance', 'deletions'],
-    queryFn: () => api<AccountDeletionRequest[]>('/admin/compliance/account-deletions'),
-  });
 
   const complete = useMutation({
     mutationFn: (id: string) =>
       api(`/admin/compliance/account-deletions/${id}/complete`, { method: 'POST' }),
     onSuccess: () => {
-      toast.success('Deletion completed · consumer PII anonymised');
+      toast.success("Deletion complete · customer's personal details removed");
       void qc.invalidateQueries({ queryKey: ['admin', 'compliance', 'deletions'] });
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Complete failed'),
@@ -451,7 +501,7 @@ function AccountDeletionsPanel() {
                       size="sm"
                       loading={complete.isPending && complete.variables === d.id}
                       onClick={() => {
-                        if (!window.confirm('Complete deletion now? Consumer PII will be anonymised.')) return;
+                        if (!window.confirm("Complete deletion now? The customer's personal details will be permanently removed.")) return;
                         complete.mutate(d.id);
                       }}
                     >

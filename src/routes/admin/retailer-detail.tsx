@@ -129,7 +129,7 @@ export default function AdminRetailerDetail() {
           actions={
             <div className="flex gap-2">
               <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-                <Link to="/admin/retailers">Back to retailers</Link>
+                <Link to="/admin/users?tab=retailers">Back to retailers</Link>
               </Button>
               <Button variant="outline" size="sm" onClick={() => void refetch()}>Retry</Button>
             </div>
@@ -176,7 +176,7 @@ export default function AdminRetailerDetail() {
         actions={
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-              <Link to="/admin/retailers">Back to retailers</Link>
+              <Link to="/admin/users?tab=retailers">Back to retailers</Link>
             </Button>
             <Button variant="outline" size="sm" iconLeft={<Eye className="size-3.5" />} onClick={impersonate} loading={startImpersonation.isPending}>
               Impersonate
@@ -293,7 +293,7 @@ export default function AdminRetailerDetail() {
         </TabsContent>
 
         <TabsContent value="issues">
-          <RelatedLink icon={Package} title="Issues filed against this retailer" href="/admin/issues" />
+          <RelatedLink icon={Package} title="Disputes filed against this retailer" href="/admin/disputes" />
         </TabsContent>
 
         <TabsContent value="audit">
@@ -347,7 +347,7 @@ function PayoutsTab({ storeId }: { storeId: string | null }) {
               <div className="mt-1 text-[11.5px] text-ink-3">Bank {p.bankAccountMasked}</div>
             </div>
             <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
-              <Link to={`/admin/payouts-pipeline/${p.id}`}>Open</Link>
+              <Link to={`/admin/payouts/${p.id}`}>Open</Link>
             </Button>
           </CardContent>
         </Card>

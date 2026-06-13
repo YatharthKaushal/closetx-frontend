@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, Info, Pause, Play, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
+import { cn } from '@/lib/cn';
 import {
   discountTypeLabel,
   formatDiscount,
@@ -49,9 +50,14 @@ export default function RetailerPromotions() {
           </>
         }
         actions={
-          <Button asChild variant="ink" caps iconLeft={<Plus className="size-3.5" />}>
-            <Link to="/retailer/promotions/new">New offer</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
+              <Link to="/retailer/pricing">Variant pricing</Link>
+            </Button>
+            <Button asChild variant="ink" caps iconLeft={<Plus className="size-3.5" />}>
+              <Link to="/retailer/promotions/new">New offer</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -67,20 +73,14 @@ export default function RetailerPromotions() {
 
       <ClubbingPolicyCard />
 
-      <Tabs defaultValue="offers">
+      <Tabs defaultValue="all">
         <TabsList className="overflow-x-auto whitespace-nowrap">
-          <TabsTrigger value="prices">Variant prices</TabsTrigger>
-          <TabsTrigger value="offers">Offers</TabsTrigger>
-          <TabsTrigger value="coupons">Coupons</TabsTrigger>
-          <TabsTrigger value="vouchers">Vouchers</TabsTrigger>
+          <TabsTrigger value="all">All promotions</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="platform-impact">Platform impact</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="prices"><VariantPricesTab /></TabsContent>
-        <TabsContent value="offers"><MechanismList mechanism="offer" /></TabsContent>
-        <TabsContent value="coupons"><MechanismList mechanism="coupon" /></TabsContent>
-        <TabsContent value="vouchers"><MechanismList mechanism="voucher" /></TabsContent>
+        <TabsContent value="all"><AllPromotionsList /></TabsContent>
         <TabsContent value="performance"><PerformanceTab /></TabsContent>
         <TabsContent value="platform-impact"><PlatformImpactTab /></TabsContent>
       </Tabs>
@@ -88,21 +88,20 @@ export default function RetailerPromotions() {
   );
 }
 
-function VariantPricesTab() {
-  return (
-    <Empty
-      title="Variant pricing lives on its own page."
-      description="Edit per-variant prices and see audit log there."
-      action={
-        <Button asChild variant="ink" iconRight={<ArrowUpRight className="size-3.5" />}>
-          <Link to="/retailer/pricing">Open variant pricing</Link>
-        </Button>
-      }
-    />
-  );
-}
+const MECHANISM_CHIPS: ReadonlyArray<{ value: Mechanism | 'all'; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'offer', label: 'Offers' },
+  { value: 'coupon', label: 'Coupons' },
+  { value: 'voucher', label: 'Vouchers' },
+];
 
-function MechanismList({ mechanism }: { mechanism: Mechanism }) {
+/**
+ * Phase 4.1 — single unified promotion list with a Mechanism chip filter
+ * replacing the previous 3 mechanism-scoped tabs. Reuses one query for all
+ * mechanisms so toggling chips is instant (no refetch).
+ */
+function AllPromotionsList() {
+  const [mechanism, setMechanism] = useState<Mechanism | 'all'>('all');
   const [status, setStatus] = useState<PromotionStatus | 'all'>('all');
   const [q, setQ] = useState('');
 
@@ -117,11 +116,50 @@ function MechanismList({ mechanism }: { mechanism: Mechanism }) {
   });
 
   const filtered = (data ?? [])
-    .filter((p) => p.mechanism === mechanism)
+    .filter((p) => mechanism === 'all' || p.mechanism === mechanism)
     .filter((p) => (q.trim() ? p.name.toLowerCase().includes(q.toLowerCase()) : true));
+
+  const counts: Record<Mechanism | 'all', number> = {
+    all: data?.length ?? 0,
+    offer: (data ?? []).filter((p) => p.mechanism === 'offer').length,
+    coupon: (data ?? []).filter((p) => p.mechanism === 'coupon').length,
+    voucher: (data ?? []).filter((p) => p.mechanism === 'voucher').length,
+  };
 
   return (
     <>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {MECHANISM_CHIPS.map((c) => {
+          const active = mechanism === c.value;
+          return (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => setMechanism(c.value)}
+              aria-pressed={active}
+              className={cn(
+                'rounded-full border px-3 py-1 text-[12px] transition-colors inline-flex items-center gap-1.5',
+                active
+                  ? 'border-ink bg-ink text-bg'
+                  : 'border-line bg-bg text-ink-3 hover:text-ink hover:bg-bg-2',
+              )}
+            >
+              {c.label}
+              {counts[c.value] > 0 && (
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 py-0.5 text-[10.5px] font-mono',
+                    active ? 'bg-bg/20 text-bg' : 'bg-bg-3 text-ink-2',
+                  )}
+                >
+                  {counts[c.value]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="relative max-w-md flex-1">
           <Search className="pointer-events-none absolute left-1 top-1/2 size-4 -translate-y-1/2 text-ink-3" />
@@ -142,14 +180,21 @@ function MechanismList({ mechanism }: { mechanism: Mechanism }) {
       ) : filtered.length === 0 ? (
         <Empty
           kicker="None"
-          title={`No ${mechanism}s match this filter.`}
-          {...(mechanism === 'offer' && {
-            action: (
-              <Button asChild variant="ink" caps iconLeft={<Plus className="size-3.5" />}>
-                <Link to="/retailer/promotions/new">New offer</Link>
-              </Button>
-            ),
-          })}
+          title={mechanism === 'all' ? 'No promotions yet.' : `No ${mechanism}s match this filter.`}
+          description={
+            mechanism === 'all'
+              ? 'Create your first offer to drive purchases and reward repeat buyers.'
+              : undefined
+          }
+          action={
+            <Button asChild variant="ink" caps iconLeft={<Plus className="size-3.5" />}>
+              <Link
+                to={`/retailer/promotions/new${mechanism === 'all' ? '' : `?mechanism=${mechanism}`}`}
+              >
+                {mechanism === 'all' ? 'New offer' : `New ${mechanism}`}
+              </Link>
+            </Button>
+          }
         />
       ) : (
         <ol className="border-y border-rule divide-y divide-rule" data-stagger>
@@ -161,9 +206,9 @@ function MechanismList({ mechanism }: { mechanism: Mechanism }) {
 }
 
 const ANOMALY_LABEL: Record<PromotionPerformance['anomalyReasons'][number], string> = {
-  velocity_spike: 'Velocity spike',
+  velocity_spike: 'Sudden surge in redemptions',
   refund_spike: 'High refund rate',
-  consumer_concentration: 'Single-consumer concentration',
+  consumer_concentration: 'Mostly used by one customer',
 };
 
 function PerformanceTab() {
@@ -189,7 +234,7 @@ function PerformanceTab() {
                   <th className="px-3 py-2 text-right font-medium text-ink-3">Redemptions</th>
                   <th className="px-3 py-2 text-right font-medium text-ink-3">Unique consumers</th>
                   <th className="px-3 py-2 text-right font-medium text-ink-3">Discount given</th>
-                  <th className="px-3 py-2 text-right font-medium text-ink-3">GMV influenced</th>
+                  <th className="px-3 py-2 text-right font-medium text-ink-3">Sales influenced</th>
                   <th className="px-3 py-2 text-right font-medium text-ink-3">Refund rate</th>
                   <th className="px-3 py-2 text-center font-medium text-ink-3">Anomaly</th>
                 </tr>
@@ -280,7 +325,7 @@ function PlatformImpactTab() {
             </Card>
             <Card>
               <CardContent className="p-4">
-                <div className="kicker text-ink-3">GMV influenced</div>
+                <div className="kicker text-ink-3">Sales influenced</div>
                 <div className="mt-1 text-[20px] font-mono text-ink">{formatPaise(totalGmv)}</div>
               </CardContent>
             </Card>
@@ -294,7 +339,7 @@ function PlatformImpactTab() {
                     <th className="px-3 py-2 text-left font-medium text-ink-3">Mechanism</th>
                     <th className="px-3 py-2 text-right font-medium text-ink-3">Orders impacted</th>
                     <th className="px-3 py-2 text-right font-medium text-ink-3">Discount absorbed</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-3">GMV influenced</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-3">Sales influenced</th>
                     <th className="px-3 py-2 text-left font-medium text-ink-3">First / last hit</th>
                   </tr>
                 </thead>

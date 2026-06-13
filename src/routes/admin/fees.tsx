@@ -4,21 +4,12 @@ import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { deliveryMethodLabel, formatPaise } from '@/lib/status';
 import type { DeliveryMethod, FeesConfig } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetaList } from '@/components/ui/meta-list';
-import { RoleGate } from '@/components/shell/RoleGate';
-
-export default function AdminFees() {
-  return (
-    <RoleGate kind="admin" subRole="super_admin">
-      <Inner />
-    </RoleGate>
-  );
-}
 
 type Draft = {
   baseDeliveryFee: Record<DeliveryMethod, number>;
@@ -61,7 +52,7 @@ function formatChanged(meta?: { at: string; by: string | null } | undefined): st
   return meta.by ? `Last edited by ${meta.by} on ${when}` : `Last edited on ${when}`;
 }
 
-function Inner() {
+export function FeesPanel() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'fees'],
@@ -84,7 +75,7 @@ function Inner() {
   });
 
   if (isLoading || !data || !draft) {
-    return <Page><PageHeader title="Fees & charges" /><Skeleton className="h-72" /></Page>;
+    return <div><Skeleton className="h-72" /></div>;
   }
 
   const serverDraft = buildDraft(data);
@@ -95,7 +86,7 @@ function Inner() {
     if (!dirty) return;
     if (draft.tcsRateBp !== serverDraft.tcsRateBp) {
       const ok = window.confirm(
-        'Confirm TCS rate change. Every new order will snapshot this value into its invoice.',
+        'Confirm the TCS rate change. Every new order will use this rate on its invoice.',
       );
       if (!ok) return;
     }
@@ -103,22 +94,20 @@ function Inner() {
   };
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Fees"
-        title="Fees & charges"
-        description="Marketplace-wide fee configuration. Super-admin only — every change recorded in audit; takes effect on next checkout."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" disabled={!dirty || save.isPending} onClick={() => setDraft(buildDraft(data))}>
-              Reset
-            </Button>
-            <Button variant="accent" loading={save.isPending} disabled={!dirty} onClick={submit}>
-              Save changes
-            </Button>
-          </div>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+          Marketplace-wide fees. Every change is recorded and takes effect at the next checkout.
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="ghost" disabled={!dirty || save.isPending} onClick={() => setDraft(buildDraft(data))}>
+            Reset
+          </Button>
+          <Button variant="accent" loading={save.isPending} disabled={!dirty} onClick={submit}>
+            Save changes
+          </Button>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -249,7 +238,7 @@ function Inner() {
             </div>
             <div className="mt-3 flex flex-col gap-1 text-[11.5px] text-ink-3">
               <p>
-                Base fee changes feed the pricing engine and Money Split. Per-km column is set in Delivery windows.
+                Base fee changes feed the pricing engine and how each order's money is split. The per-km column is set in Delivery windows.
               </p>
               {formatChanged(data.lastChanged.base_delivery_fee_table) && (
                 <p className="text-ink-4">{formatChanged(data.lastChanged.base_delivery_fee_table)}</p>
@@ -261,6 +250,6 @@ function Inner() {
           </CardContent>
         </Card>
       </div>
-    </Page>
+    </div>
   );
 }

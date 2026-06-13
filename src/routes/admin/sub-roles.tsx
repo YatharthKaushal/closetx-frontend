@@ -3,12 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { AdminSubRole, RetailerSubRole, SubRolePermissionMatrix } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Segmented } from '@/components/ui/segmented';
 import { Button } from '@/components/ui/button';
-import { RoleGate } from '@/components/shell/RoleGate';
 
 type RawMatrix = Record<string, Record<string, boolean>>;
 type BackendResponse = { admin: RawMatrix; retailer: RawMatrix };
@@ -27,16 +25,15 @@ function toMatrix<R extends string>(raw: RawMatrix | undefined | null): SubRoleP
   return { subRoles, actions, cells };
 }
 
-export default function AdminSubRoles() {
-  return (
-    <RoleGate kind="admin" subRole="super_admin">
-      <AdminSubRolesInner />
-    </RoleGate>
-  );
-}
-
-function AdminSubRolesInner() {
+/**
+ * Sub-role permission matrix, mounted as a tab inside the Identity hub. Access
+ * is gated upstream (the hub only renders this tab for super_admins). The two
+ * scopes (admin / retailer) switch via a Segmented pill row — a secondary
+ * control beneath the hub's primary tab bar.
+ */
+export function SubRolesPanel() {
   const qc = useQueryClient();
+  const [scope, setScope] = useState<'admin' | 'retailer'>('admin');
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'sub-roles'],
     queryFn: () => api<BackendResponse>('/admin/sub-roles'),
@@ -57,45 +54,44 @@ function AdminSubRolesInner() {
   });
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Identity & Access"
-        title="Sub-role permissions"
-        description="Action × sub-role grid. Edits take effect on next sign-in."
-      />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Action × sub-role grid. Edits take effect on next sign-in.
+        </p>
+        <Segmented
+          value={scope}
+          onChange={(v) => setScope(v as 'admin' | 'retailer')}
+          size="md"
+          options={[
+            { value: 'admin', label: 'Admin sub-roles' },
+            { value: 'retailer', label: 'Retailer sub-roles' },
+          ]}
+        />
+      </div>
 
-      <Tabs defaultValue="admin">
-        <TabsList>
-          <TabsTrigger value="admin">Admin sub-roles</TabsTrigger>
-          <TabsTrigger value="retailer">Retailer sub-roles</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="admin">
-          {isLoading || !adminMatrix ? (
-            <Skeleton className="h-80" />
-          ) : (
-            <PermissionGrid
-              scope="admin"
-              matrix={adminMatrix}
-              saving={saveMutation.isPending}
-              onSave={(patches) => saveMutation.mutate(patches)}
-            />
-          )}
-        </TabsContent>
-        <TabsContent value="retailer">
-          {isLoading || !retailerMatrix ? (
-            <Skeleton className="h-80" />
-          ) : (
-            <PermissionGrid
-              scope="retailer"
-              matrix={retailerMatrix}
-              saving={saveMutation.isPending}
-              onSave={(patches) => saveMutation.mutate(patches)}
-            />
-          )}
-        </TabsContent>
-      </Tabs>
-    </Page>
+      {scope === 'admin' ? (
+        isLoading || !adminMatrix ? (
+          <Skeleton className="h-80" />
+        ) : (
+          <PermissionGrid
+            scope="admin"
+            matrix={adminMatrix}
+            saving={saveMutation.isPending}
+            onSave={(patches) => saveMutation.mutate(patches)}
+          />
+        )
+      ) : isLoading || !retailerMatrix ? (
+        <Skeleton className="h-80" />
+      ) : (
+        <PermissionGrid
+          scope="retailer"
+          matrix={retailerMatrix}
+          saving={saveMutation.isPending}
+          onSave={(patches) => saveMutation.mutate(patches)}
+        />
+      )}
+    </div>
   );
 }
 

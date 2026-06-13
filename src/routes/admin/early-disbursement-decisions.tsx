@@ -5,7 +5,6 @@ import { Check, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
 import type { EarlyDisbursementRequest } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReasonActionDialog } from '@/components/admin/reason-action-dialog';
 
-export default function AdminEarlyDisbursementDecisions() {
+export function EarlyPayoutsPanel() {
   const queryClient = useQueryClient();
   const [rejecting, setRejecting] = useState<EarlyDisbursementRequest | null>(null);
   const { data, isLoading } = useQuery({
@@ -47,12 +46,11 @@ export default function AdminEarlyDisbursementDecisions() {
   }
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Early disbursement decisions"
-        description="Retailers requesting off-cycle payouts. Approve to release with the standard expedite fee, or reject with cause."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Retailers asking to be paid early, before the normal payout date. Approve to pay them now
+        (the standard early-payout fee applies), or reject with a reason.
+      </p>
 
       <Tabs defaultValue="pending">
         <TabsList>
@@ -110,6 +108,6 @@ export default function AdminEarlyDisbursementDecisions() {
         onClose={() => setRejecting(null)}
         onConfirm={(reason) => { void reject(rejecting!, reason); setRejecting(null); }}
       />
-    </Page>
+    </div>
   );
 }

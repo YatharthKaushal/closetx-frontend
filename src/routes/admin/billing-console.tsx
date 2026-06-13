@@ -4,12 +4,11 @@ import { Lock, Play } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
 import type { BillingMonthSummary } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RoleGate } from '@/components/shell/RoleGate';
 
 const TONE: Record<BillingMonthSummary['status'], 'warning' | 'info' | 'success'> = {
   open: 'warning',
@@ -17,15 +16,7 @@ const TONE: Record<BillingMonthSummary['status'], 'warning' | 'info' | 'success'
   closed: 'success',
 };
 
-export default function AdminBillingConsole() {
-  return (
-    <RoleGate kind="admin" subRole="super_admin">
-      <Inner />
-    </RoleGate>
-  );
-}
-
-function Inner() {
+export function BillingPanel() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'billing-console'],
@@ -46,12 +37,11 @@ function Inner() {
   });
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Billing console"
-        description="Current-month status, prior months, and GST return file readiness. Use the trigger to close the open month — irreversible once closed."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        This month's billing, past months, and whether each month's GST file is ready. Closing the
+        open month is final — you can't reopen it once closed.
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -134,7 +124,7 @@ function Inner() {
           </CardContent>
         </Card>
       )}
-    </Page>
+    </div>
   );
 }
 

@@ -233,12 +233,12 @@ export default function RetailerPromotionNew() {
           />
 
           <SectionHeading
-            title="Stacking overrides"
-            hint="Override the platform clubbing matrix for this promotion only"
+            title="Combining with other offers"
+            hint="Override the standard offer-combining rules, just for this promotion"
           />
           <div className="grid gap-5 sm:grid-cols-2 max-w-2xl">
             <div>
-              <Label hint="Force-allow stacking with these promos">Stackable with</Label>
+              <Label hint="Allow this offer to be combined with these promotions">Can combine with</Label>
               <MultiSelect
                 options={promoOptions}
                 value={stackableWith}

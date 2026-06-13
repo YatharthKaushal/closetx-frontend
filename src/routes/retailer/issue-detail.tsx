@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MetaList } from '@/components/ui/meta-list';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { MediaGallery } from '@/components/ui/media-gallery';
+import { AttachmentThumbs } from '@/components/ui/attachment-thumbs';
 import { Textarea } from '@/components/ui/input';
 
 function formatPaise(paise: number) {
@@ -76,12 +77,12 @@ export default function RetailerIssueDetail() {
   return (
     <Page>
       <PageHeader
-        kicker="Issues"
-        title={`Issue · ${data.kind ?? 'dispute'}`}
+        kicker="Disputes"
+        title={`Dispute · ${data.id.slice(0, 12)}…`}
         description={`Opened ${formatAge(data.createdAt)} · ${data.orderId ? `Order ${data.orderId}` : data.returnId ? `Return ${data.returnId}` : ''}`}
         actions={
           <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-            <Link to="/retailer/issues">Back</Link>
+            <Link to="/retailer/disputes">Back</Link>
           </Button>
         }
       />
@@ -93,8 +94,7 @@ export default function RetailerIssueDetail() {
             Awaiting {data.awaitingParty}
           </Badge>
         )}
-        <Badge tone="info" flat>{data.kind ?? 'dispute'}</Badge>
-        <CopyableId value={data.id} label="issue id" />
+        <CopyableId value={data.id} label="dispute id" />
         {data.orderId && (
           <Link
             to={`/retailer/orders/${data.orderId}`}
@@ -116,11 +116,7 @@ export default function RetailerIssueDetail() {
               {data.evidence.length > 0 && (
                 <div>
                   <div className="mb-2 text-[11.5px] font-medium uppercase tracking-wider text-ink-4">Evidence files</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {data.evidence.map((e) => (
-                      <Badge key={e} tone="neutral" flat>{e}</Badge>
-                    ))}
-                  </div>
+                  <AttachmentThumbs urls={data.evidence} />
                 </div>
               )}
 
@@ -152,13 +148,7 @@ export default function RetailerIssueDetail() {
                       </div>
                       <p className="mt-1 text-[13px] text-ink-2 whitespace-pre-wrap">{m.body}</p>
                       {m.attachments.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-2">
-                          {m.attachments.map((url: string, i: number) => (
-                            <a key={i} href={url} target="_blank" rel="noreferrer" className="text-[12px] text-accent hover:underline truncate max-w-[200px]">
-                              {url.split('/').pop()}
-                            </a>
-                          ))}
-                        </div>
+                        <AttachmentThumbs urls={m.attachments} size="sm" className="mt-1.5" />
                       )}
                     </li>
                   ))}
@@ -239,7 +229,7 @@ export default function RetailerIssueDetail() {
               ]}
             />
             <p className="mt-3 text-[12px] text-ink-3">
-              Contact platform support if you need to respond to this issue or submit additional evidence.
+              Contact platform support if you need to respond to this dispute or submit additional evidence.
             </p>
           </CardContent>
         </Card>

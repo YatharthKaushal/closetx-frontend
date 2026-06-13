@@ -17,7 +17,8 @@ const STATUS_TONE: Record<BillingStatement['status'], 'warning' | 'info' | 'succ
   closed: 'success',
 };
 
-export default function RetailerBillingStatements() {
+/** Body-only renderer (see TaxInvoicesBody for the rationale). */
+export function BillingStatementsBody() {
   const { data, isLoading } = useQuery({
     queryKey: ['retailer', 'billing-statements'],
     queryFn: () => api<BillingStatement[]>('/retailer/billing-statements'),
@@ -25,12 +26,7 @@ export default function RetailerBillingStatements() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Billing statements"
-        description="Monthly statement of orders, commission, TCS, refunds, holds, and adjustments. Click a row to drill into the detail."
-      />
+    <>
       {isLoading ? <Skeleton className="h-32" /> : list.length === 0 ? (
         <Empty kicker="None" title="No statements yet." />
       ) : (
@@ -57,6 +53,19 @@ export default function RetailerBillingStatements() {
           ))}
         </ul>
       )}
+    </>
+  );
+}
+
+export default function RetailerBillingStatements() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Payouts"
+        title="Billing statements"
+        description="Your monthly summary of orders, fees, TCS, refunds, money held back, and adjustments. Click a row to see the details."
+      />
+      <BillingStatementsBody />
     </Page>
   );
 }

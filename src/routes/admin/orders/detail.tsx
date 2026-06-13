@@ -696,6 +696,25 @@ function Detail({
         }
       />
 
+      <div className="-mt-2 mb-4 flex flex-wrap gap-2">
+        {order.storeId && (
+          <Link
+            to={`/admin/stores?storeId=${order.storeId}`}
+            className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2 py-0.5 text-[11.5px] text-ink-3 hover:text-ink hover:bg-bg-3"
+          >
+            Open store
+          </Link>
+        )}
+        {order.consumerId && (
+          <Link
+            to={`/admin/consumers/${order.consumerId}`}
+            className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2 py-0.5 text-[11.5px] text-ink-3 hover:text-ink hover:bg-bg-3"
+          >
+            Open consumer
+          </Link>
+        )}
+      </div>
+
       {order.group.siblingOrders.length > 0 && (
         <div className="mb-4">
           <OrderGroupCard

@@ -1,12 +1,11 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowUpRight, Check, Search, X } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { retailerStatusMeta } from '@/lib/status';
-import type { AdminRetailerView, RetailerStatus } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
+import type { AdminRetailerView, AdminStoreView, RetailerStatus } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
@@ -28,6 +27,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { FieldError, Label } from '@/components/ui/label';
+import { Th, Td, useSort, sortRows, sortProps } from '@/components/ui/table';
+import { ColumnPicker, useColumnVisibility, type ColumnSpec } from '@/components/ui/column-picker';
 
 const SUB_ROLE_LABEL: Record<string, string> = {
   owner: 'Owner',
@@ -35,20 +36,77 @@ const SUB_ROLE_LABEL: Record<string, string> = {
   staff: 'Floor staff',
 };
 
-const STATUS_OPTIONS: ReadonlyArray<{ value: RetailerStatus | 'all'; label: string }> = [
-  { value: 'pending_approval', label: 'Pending approval' },
-  { value: 'approved_no_store', label: 'Approved · awaiting store' },
-  { value: 'onboarding', label: 'Onboarding' },
-  { value: 'active', label: 'Active' },
-  { value: 'paused', label: 'Paused' },
-  { value: 'suspended', label: 'Suspended' },
-  { value: 'terminated', label: 'Terminated' },
-  { value: 'all', label: 'All retailers' },
+type RetailerCol = 'role' | 'contact' | 'gstin';
+const COL_SPECS: ReadonlyArray<ColumnSpec<RetailerCol>> = [
+  { key: 'role', label: 'Role', defaultHidden: true },
+  { key: 'contact', label: 'Contact', defaultHidden: true },
+  { key: 'gstin', label: 'GSTIN', defaultHidden: true },
 ];
 
-export default function AdminRetailers() {
-  const [status, setStatus] = useState<RetailerStatus | 'all'>('active');
-  const [q, setQ] = useState('');
+type FilterStatus = 'all' | 'pending' | 'active' | 'suspended' | 'terminated';
+
+const STATUS_OPTIONS: ReadonlyArray<{ value: FilterStatus; label: string }> = [
+  { value: 'all', label: 'All retailers' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'active', label: 'Active' },
+  { value: 'suspended', label: 'Suspended' },
+  { value: 'terminated', label: 'Terminated' },
+];
+
+const FILTER_STATUS_MAP: Record<FilterStatus, RetailerStatus[] | null> = {
+  all: null,
+  pending: ['pending_approval', 'approved_no_store', 'onboarding'],
+  active: ['active'],
+  suspended: ['suspended', 'paused'],
+  terminated: ['terminated'],
+};
+
+function parseStatus(v: string | null): FilterStatus {
+  switch (v) {
+    case 'all':
+    case 'pending':
+    case 'active':
+    case 'suspended':
+    case 'terminated':
+      return v;
+    default:
+      return 'active';
+  }
+}
+
+export function RetailersPanel() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const status = parseStatus(searchParams.get('status'));
+  const q = searchParams.get('q') ?? '';
+
+  /**
+   * Both filter inputs are mirrored to the URL so reloads, share-links, and
+   * back-navigation from the stores chip preserve the operator's view. We use
+   * `replace: true` so each keystroke into the search box doesn't pollute
+   * browser history.
+   */
+  const updateParams = useCallback(
+    (patch: { status?: FilterStatus; q?: string }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (patch.status !== undefined) {
+            if (patch.status === 'active') next.delete('status');
+            else next.set('status', patch.status);
+          }
+          if (patch.q !== undefined) {
+            if (patch.q === '') next.delete('q');
+            else next.set('q', patch.q);
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const setStatus = (v: FilterStatus) => updateParams({ status: v });
+  const setQ = (v: string) => updateParams({ q: v });
   const [rejecting, setRejecting] = useState<AdminRetailerView | null>(null);
   const [suspending, setSuspending] = useState<AdminRetailerView | null>(null);
   const [terminating, setTerminating] = useState<AdminRetailerView | null>(null);
@@ -56,12 +114,19 @@ export default function AdminRetailers() {
   const qc = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['admin', 'retailers', status],
-    queryFn: () =>
-      api<AdminRetailerView[]>(
-        status === 'all' ? '/admin/retailers' : `/admin/retailers?status=${status}`,
-      ),
+    queryKey: ['admin', 'retailers', 'all'],
+    queryFn: () => api<AdminRetailerView[]>('/admin/retailers'),
   });
+
+  const storesQuery = useQuery({
+    queryKey: ['admin', 'stores', 'all'],
+    queryFn: () => api<AdminStoreView[]>('/admin/stores'),
+  });
+  const storeCountByRetailer = (storesQuery.data ?? []).reduce<Record<string, number>>((acc, s) => {
+    const rid = s.retailer?.id;
+    if (rid) acc[rid] = (acc[rid] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const approve = useMutation({
     mutationFn: (id: string) =>
@@ -109,7 +174,12 @@ export default function AdminRetailers() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Terminate failed'),
   });
 
+  const { sort, toggle } = useSort<'name' | 'status' | 'joined'>({ key: 'joined', dir: 'desc' });
+  const cols = useColumnVisibility<RetailerCol>('admin.retailers.cols', COL_SPECS);
+
+  const allowedStatuses = FILTER_STATUS_MAP[status];
   const filtered = (data ?? []).filter((r) => {
+    if (allowedStatuses && !allowedStatuses.includes(r.status)) return false;
     if (!q.trim()) return true;
     const n = q.toLowerCase();
     return (
@@ -120,17 +190,24 @@ export default function AdminRetailers() {
     );
   });
 
+  const sorted = sortRows(filtered, sort, (r, key) => {
+    if (key === 'name') return r.legalName;
+    if (key === 'status') return r.status;
+    if (key === 'joined') return new Date(r.createdAt);
+    return null;
+  });
+
   return (
-    <Page>
-      <PageHeader
-        title="Retailers"
-        description="Approve to admit, reject with cause to log a refusal. A store is provisioned automatically on approval."
-        actions={
-          <Button asChild variant="ink" size="sm">
-            <Link to="/admin/retailers/new">+ New retailer</Link>
-          </Button>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Approve to admit, reject with cause to log a refusal. A store is provisioned automatically
+          on approval.
+        </p>
+        <Button asChild variant="ink" size="sm">
+          <Link to="/admin/retailers/new">+ New retailer</Link>
+        </Button>
+      </div>
 
       {/* Toolbar */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -146,7 +223,7 @@ export default function AdminRetailers() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={status} onValueChange={(v) => setStatus(v as RetailerStatus | 'all')}>
+          <Select value={status} onValueChange={(v) => setStatus(v as FilterStatus)}>
             <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map((o) => (
@@ -157,6 +234,12 @@ export default function AdminRetailers() {
           <span className="text-[12px] text-ink-3 hidden sm:inline">
             {filtered.length} {filtered.length === 1 ? 'result' : 'results'}
           </span>
+          <ColumnPicker
+            columns={COL_SPECS}
+            isVisible={cols.isVisible}
+            onToggle={cols.toggle}
+            onReset={cols.reset}
+          />
         </div>
       </div>
 
@@ -183,35 +266,58 @@ export default function AdminRetailers() {
           <table className="hidden md:table w-full text-[13px] min-w-[900px]">
             <thead className="bg-bg-2 border-b border-line">
               <tr>
-                <Th>Retailer</Th>
-                <Th>Role</Th>
-                <Th>Contact</Th>
-                <Th>GSTIN</Th>
-                <Th>Status</Th>
-                <Th>Joined</Th>
+                <Th {...sortProps(sort, 'name', toggle)}>Retailer</Th>
+                {cols.isVisible('role') && <Th>Role</Th>}
+                {cols.isVisible('contact') && <Th>Contact</Th>}
+                {cols.isVisible('gstin') && <Th>GSTIN</Th>}
+                <Th {...sortProps(sort, 'status', toggle)}>Status</Th>
+                <Th {...sortProps(sort, 'joined', toggle)}>Joined</Th>
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {filtered.map((r) => {
+              {sorted.map((r) => {
                 const meta = retailerStatusMeta(r.status);
                 const busy = approve.isPending && approve.variables === r.id;
                 return (
                   <tr key={r.id} className="hover:bg-bg-2/50 transition-colors">
                     <Td>
-                      <div className="font-medium text-ink">{r.legalName}</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-ink">{r.legalName}</span>
+                        {!cols.isVisible('role') && (
+                          <Badge tone="info" flat>{SUB_ROLE_LABEL[r.subRole] ?? r.subRole}</Badge>
+                        )}
+                        {(() => {
+                          const count = storeCountByRetailer[r.id] ?? 0;
+                          if (count === 0) return null;
+                          return (
+                            <Link
+                              to={`/admin/stores?retailerId=${r.id}`}
+                              className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2 py-0.5 text-[11px] text-ink-3 hover:text-ink hover:bg-bg-3"
+                            >
+                              {count} {count === 1 ? 'store' : 'stores'}
+                            </Link>
+                          );
+                        })()}
+                      </div>
                       <div className="text-[11px] text-ink-4 font-mono mt-0.5 truncate max-w-[180px]">
                         {r.id}
                       </div>
                     </Td>
-                    <Td>
-                      <Badge tone="info" flat>{SUB_ROLE_LABEL[r.subRole] ?? r.subRole}</Badge>
-                    </Td>
-                    <Td>
-                      <div className="text-ink-2">{r.email}</div>
-                      <div className="text-[11.5px] text-ink-3 mt-0.5">{r.phone}</div>
-                    </Td>
-                    <Td className="font-mono text-[12px]">{r.gstin}</Td>
+                    {cols.isVisible('role') && (
+                      <Td>
+                        <Badge tone="info" flat>{SUB_ROLE_LABEL[r.subRole] ?? r.subRole}</Badge>
+                      </Td>
+                    )}
+                    {cols.isVisible('contact') && (
+                      <Td>
+                        <div className="text-ink-2">{r.email}</div>
+                        <div className="text-[11.5px] text-ink-3 mt-0.5">{r.phone}</div>
+                      </Td>
+                    )}
+                    {cols.isVisible('gstin') && (
+                      <Td className="font-mono text-[12px]">{r.gstin}</Td>
+                    )}
                     <Td>
                       <Badge tone={meta.tone} pulse={r.status === 'pending_approval'}>
                         {meta.label}
@@ -276,7 +382,7 @@ export default function AdminRetailers() {
 
           {/* Mobile: stacked cards */}
           <ul className="md:hidden divide-y divide-line">
-            {filtered.map((r) => {
+            {sorted.map((r) => {
               const meta = retailerStatusMeta(r.status);
               const busy = approve.isPending && approve.variables === r.id;
               return (
@@ -368,19 +474,8 @@ export default function AdminRetailers() {
         onConfirm={(reason) => { if (terminating) terminate.mutate({ id: terminating.id, reason }); }}
         loading={terminate.isPending}
       />
-    </Page>
+    </div>
   );
-}
-
-function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return (
-    <th className={`px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-3 ${className ?? ''}`}>
-      {children}
-    </th>
-  );
-}
-function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 align-top ${className ?? ''}`}>{children}</td>;
 }
 
 function RejectDialog({

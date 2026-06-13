@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowUpRight, Plus, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Plus, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import {
   deliveryMethodLabel,
@@ -10,77 +10,18 @@ import {
   formatPaise,
   orderStatusMeta,
   paymentMethodLabel,
+  paymentStatusMeta,
 } from '@/lib/status';
 import type { OrderListRow, OrderStatus } from '@/lib/types';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyableId } from '@/components/ui/copyable-id';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FiltersSheet, type OrderFilterValues } from './order-filters';
 
-const STATUS_OPTIONS: ReadonlyArray<{ value: OrderStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'routing', label: 'Routing (needs accept)' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'packed', label: 'Packed' },
-  { value: 'picked_up', label: 'Picked up' },
-  { value: 'out_for_delivery', label: 'Out for delivery' },
-  { value: 'undelivered', label: 'Undelivered' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'closed', label: 'Closed' },
-  { value: 'payment_failed', label: 'Payment failed' },
-  { value: 'cancelled', label: 'Cancelled' },
-];
-
-const PAYMENT_METHOD_OPTIONS = [
-  { value: 'all', label: 'Any payment method' },
-  { value: 'upi', label: 'UPI' },
-  { value: 'card', label: 'Card' },
-  { value: 'cod', label: 'Cash on delivery' },
-  { value: 'wallet', label: 'Wallet' },
-  { value: 'gift_card', label: 'Gift card' },
-] as const;
-
-const DELIVERY_METHOD_OPTIONS = [
-  { value: 'all', label: 'Any delivery method' },
-  { value: 'express', label: 'Express' },
-  { value: 'standard', label: 'Standard' },
-  { value: 'pickup', label: 'Pickup' },
-  { value: 'try_and_buy', label: 'Try and buy' },
-] as const;
-
-const AGE_OPTIONS = [
-  { value: 'all', label: 'Any age' },
-  { value: '1', label: 'Older than 1h' },
-  { value: '6', label: 'Older than 6h' },
-  { value: '24', label: 'Older than 24h' },
-  { value: '168', label: 'Older than a week' },
-] as const;
-
-const PAYMENT_STATE_OPTIONS = [
-  { value: 'all', label: 'Any payment state' },
-  { value: 'paid', label: 'Paid' },
-  { value: 'unpaid', label: 'Pending' },
-  { value: 'failed', label: 'Failed' },
-] as const;
-
-const DISPUTE_OPTIONS = [
-  { value: 'all', label: 'Any dispute state' },
-  { value: 'open', label: 'Open disputes' },
-  { value: 'none', label: 'No disputes' },
-] as const;
-
-type AdminStoreLite = { id: string; legalName: string };
 
 export default function AdminOrdersList() {
   const navigate = useNavigate();
@@ -139,13 +80,6 @@ export default function AdminOrdersList() {
     setParams(next, { replace: true });
   }
 
-  // Store options for the Retailer filter — loaded lazily, cached for the session.
-  const storesQ = useQuery({
-    queryKey: ['admin', 'stores', 'lite'],
-    queryFn: () => api<Array<AdminStoreLite & Record<string, unknown>>>('/admin/stores'),
-    staleTime: 5 * 60 * 1000,
-  });
-
   const timeoutCountQ = useQuery({
     queryKey: ['admin', 'orders', 'acceptance-timeout', 'count'],
     queryFn: () => api<TimeoutRow[]>('/admin/orders/acceptance-timeout'),
@@ -169,6 +103,27 @@ export default function AdminOrdersList() {
       (o.storeName ?? '').toLowerCase().includes(n)
     );
   });
+
+  const values: OrderFilterValues = {
+    status, storeId, paymentMethod, deliveryMethod, ageHours, paymentState, disputeFlag,
+  };
+  function clearAll() {
+    const next = new URLSearchParams();
+    if (params.get('tab')) next.set('tab', params.get('tab')!);
+    setParams(next, { replace: true });
+  }
+  const resultLabel =
+    total === 0 ? (
+      '0 orders'
+    ) : (
+      <>
+        Showing{' '}
+        <span className="font-mono text-ink">
+          {(page - 1) * PAGE_SIZE + 1}–{Math.min(total, (page - 1) * PAGE_SIZE + rows.length)}
+        </span>{' '}
+        of <span className="font-mono text-ink">{total}</span>
+      </>
+    );
 
   return (
     <Page>
@@ -227,91 +182,15 @@ export default function AdminOrdersList() {
         </TabsContent>
 
         <TabsContent value="all">
-          <div className="mb-4 space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex max-w-md flex-1 items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-3" />
-                  <Input
-                    placeholder="Search id, customer, or store…"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    className="!pl-9"
-                  />
-                </div>
-              </div>
-              <span className="hidden sm:inline text-[12px] text-ink-3">
-                {total === 0 ? '0 orders' : (
-                  <>
-                    Showing{' '}
-                    <span className="font-mono text-ink">
-                      {(page - 1) * PAGE_SIZE + 1}–{Math.min(total, (page - 1) * PAGE_SIZE + rows.length)}
-                    </span>{' '}
-                    of <span className="font-mono text-ink">{total}</span>
-                  </>
-                )}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterSelect
-                value={status}
-                onChange={(v) => setParam('status', v)}
-                options={STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                width="w-52"
-              />
-              <FilterSelect
-                value={storeId}
-                onChange={(v) => setParam('storeId', v)}
-                options={[
-                  { value: 'all', label: 'Any retailer' },
-                  ...(storesQ.data ?? []).map((s) => ({ value: s.id, label: s.legalName })),
-                ]}
-                width="w-48"
-              />
-              <FilterSelect
-                value={paymentMethod}
-                onChange={(v) => setParam('paymentMethod', v)}
-                options={PAYMENT_METHOD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                width="w-44"
-              />
-              <FilterSelect
-                value={deliveryMethod}
-                onChange={(v) => setParam('deliveryMethod', v)}
-                options={DELIVERY_METHOD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                width="w-44"
-              />
-              <FilterSelect
-                value={ageHours}
-                onChange={(v) => setParam('ageHours', v)}
-                options={AGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                width="w-40"
-              />
-              <FilterSelect
-                value={paymentState}
-                onChange={(v) => setParam('paymentState', v)}
-                options={PAYMENT_STATE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                width="w-40"
-              />
-              <FilterSelect
-                value={disputeFlag}
-                onChange={(v) => setParam('disputeFlag', v)}
-                options={DISPUTE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                width="w-40"
-              />
-              {queryString && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const next = new URLSearchParams();
-                    if (params.get('tab')) next.set('tab', params.get('tab')!);
-                    setParams(next, { replace: true });
-                  }}
-                >
-                  Clear filters
-                </Button>
-              )}
-            </div>
+          <div className="mb-4">
+            <FiltersSheet
+              values={values}
+              setParam={setParam}
+              clearAll={clearAll}
+              q={q}
+              setQ={setQ}
+              resultLabel={resultLabel}
+            />
           </div>
 
           {isLoading ? (
@@ -341,12 +220,9 @@ export default function AdminOrdersList() {
                 <thead className="bg-bg-2 border-b border-line">
                   <tr>
                     <Th>Order</Th>
-                    <Th>Status</Th>
-                    <Th>Store</Th>
                     <Th>Customer</Th>
-                    <Th>Method</Th>
-                    <Th className="text-right">Total</Th>
-                    <Th>Placed</Th>
+                    <Th>Store</Th>
+                    <Th>Order value</Th>
                     <Th></Th>
                   </tr>
                 </thead>
@@ -361,18 +237,18 @@ export default function AdminOrdersList() {
                       >
                         <Td>
                           <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
-                            <CopyableId value={o.id} label="order id" />
-                            {o.hasOpenDispute && (
-                              <Badge tone="danger" className="w-fit">
-                                <AlertTriangle className="size-3" /> Dispute
-                              </Badge>
-                            )}
+                            <CopyableId value={o.id} label="order id" full className="w-fit" />
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Badge tone={meta.tone} pulse={meta.pulse}>{meta.label}</Badge>
+                              {o.hasOpenDispute && (
+                                <Badge tone="danger" className="w-fit">
+                                  <AlertTriangle className="size-3" /> Dispute
+                                </Badge>
+                              )}
+                              <span className="text-[11px] text-ink-3">{formatAge(o.placedAt)}</span>
+                            </div>
                           </div>
                         </Td>
-                        <Td>
-                          <Badge tone={meta.tone} pulse={meta.pulse}>{meta.label}</Badge>
-                        </Td>
-                        <Td className="text-ink-2 truncate max-w-[160px]">{o.storeName ?? '—'}</Td>
                         <Td>
                           <div className="text-ink-2 truncate max-w-[160px]">{o.consumerName}</div>
                           {o.consumerPhone && (
@@ -380,16 +256,24 @@ export default function AdminOrdersList() {
                           )}
                         </Td>
                         <Td>
-                          <div className="text-[12.5px] text-ink-2">{deliveryMethodLabel(o.deliveryMethod)}</div>
-                          <div className="text-[11.5px] text-ink-3 mt-0.5">{paymentMethodLabel(o.paymentMethod)}</div>
+                          <div className="text-ink-2 truncate max-w-[160px]">{o.storeName ?? '—'}</div>
+                          {o.storePhone && (
+                            <div className="text-[11.5px] text-ink-3 mt-0.5">{o.storePhone}</div>
+                          )}
                         </Td>
-                        <Td className="text-right">
-                          <div className="font-mono text-[13.5px] text-ink tabular-nums">
-                            {formatPaise(o.grandTotalPaise)}
+                        <Td>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[13.5px] text-ink tabular-nums">{formatPaise(o.grandTotalPaise)}</span>
+                            {o.paymentStatus && (
+                              <Badge tone={paymentStatusMeta(o.paymentStatus).tone}>
+                                {paymentStatusMeta(o.paymentStatus).label}
+                              </Badge>
+                            )}
                           </div>
-                          <div className="text-[11px] text-ink-3 mt-0.5">{o.itemCount} item{o.itemCount === 1 ? '' : 's'}</div>
+                          <div className="text-[11.5px] text-ink-3 mt-0.5">
+                            {deliveryMethodLabel(o.deliveryMethod)} · {paymentMethodLabel(o.paymentMethod)} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}
+                          </div>
                         </Td>
-                        <Td className="text-[12px] text-ink-3">{formatAge(o.placedAt)}</Td>
                         <Td className="text-right">
                           <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
                             <Link to={`/admin/orders/${o.id}`}>Open</Link>
@@ -415,11 +299,14 @@ export default function AdminOrdersList() {
                           <Badge tone={meta.tone} pulse={meta.pulse}>{meta.kicker}</Badge>
                         </div>
                         <div className="flex items-center justify-between text-[12.5px]">
-                          <span className="text-ink-3 truncate max-w-[60%]">{o.storeName ?? '—'}</span>
+                          <span className="text-ink-3 truncate max-w-[60%]">{o.storeName ?? '—'}{o.storePhone ? ` · ${o.storePhone}` : ''}</span>
                           <span className="font-mono tabular-nums text-ink">{formatPaise(o.grandTotalPaise)}</span>
                         </div>
                         <div className="flex items-center justify-between text-[11.5px] text-ink-3">
-                          <span>{deliveryMethodLabel(o.deliveryMethod)} · {paymentMethodLabel(o.paymentMethod)}</span>
+                          <span>
+                            {deliveryMethodLabel(o.deliveryMethod)} · {paymentMethodLabel(o.paymentMethod)}
+                            {o.paymentStatus ? ` · ${paymentStatusMeta(o.paymentStatus).label}` : ''}
+                          </span>
                           <span>{formatAge(o.placedAt)}</span>
                         </div>
                         {o.hasOpenDispute && (
@@ -465,29 +352,6 @@ export default function AdminOrdersList() {
         </TabsContent>
       </Tabs>
     </Page>
-  );
-}
-
-function FilterSelect({
-  value,
-  onChange,
-  options,
-  width,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: ReadonlyArray<{ value: string; label: string }>;
-  width?: string;
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={width}><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 

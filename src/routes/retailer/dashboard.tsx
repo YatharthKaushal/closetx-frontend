@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/cn';
+import { GettingStartedChecklist } from '@/components/retailer/getting-started-checklist';
 
 type MeResponse = { retailer: RetailerProfile; store: Store | null };
 
@@ -97,8 +98,9 @@ export default function RetailerDashboard() {
         ) : undefined}
       />
 
-      {liveAndKicking ? (
+      {liveAndKicking && store ? (
         <LiveDashboard
+          store={store}
           listings={listings.data ?? []}
           orders={ordersQuery.data ?? []}
           loadingListings={listings.isLoading}
@@ -289,11 +291,13 @@ function ClarificationPanel({ retailer }: { retailer: RetailerProfile }) {
 // ───────── Live dashboard ─────────
 
 function LiveDashboard({
+  store,
   listings,
   orders,
   loadingListings,
   loadingOrders,
 }: {
+  store: Store;
   listings: Listing[];
   orders: RetailerOrder[];
   loadingListings: boolean;
@@ -303,6 +307,10 @@ function LiveDashboard({
 
   return (
     <>
+      <div className="mb-5">
+        <GettingStartedChecklist store={store} listings={listings} />
+      </div>
+
       <QuickActions />
 
       {/* Row 1: Revenue spotlight + 3 secondary KPIs */}
@@ -395,7 +403,7 @@ function RevenueKpi({ analytics, loading }: { analytics: Analytics; loading: boo
       <div className="absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle_at_20%_20%,white_1px,transparent_1px)] [background-size:20px_20px]" />
       <div className="relative flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <span className="text-[11.5px] font-medium uppercase tracking-wider text-bg/60">30-day GMV</span>
+          <span className="text-[11.5px] font-medium uppercase tracking-wider text-bg/60">30-day total sales</span>
           <span className="grid size-8 place-items-center rounded-full bg-bg/10">
             <TrendingUp className="size-4 text-bg/70" />
           </span>
@@ -644,12 +652,12 @@ function TopProductsByOrders({
 
 function LowStockCard({ listings, loading }: { listings: Listing[]; loading: boolean }) {
   const lowStock = useMemo(() => {
-    const items: { name: string; variant: string; stock: number }[] = [];
+    const items: { id: string; name: string; variant: string; stock: number }[] = [];
     for (const l of listings) {
       if (l.status !== 'active') continue;
       for (const v of l.variants ?? []) {
         if (v.stock <= 3) {
-          items.push({ name: l.name, variant: v.attributesLabel, stock: v.stock });
+          items.push({ id: l.id, name: l.name, variant: v.attributesLabel, stock: v.stock });
         }
       }
     }
@@ -677,15 +685,25 @@ function LowStockCard({ listings, loading }: { listings: Listing[]; loading: boo
       ) : (
         <ul className="space-y-2">
           {lowStock.map((item, i) => (
-            <li key={i} className={cn('flex items-center gap-3 rounded-lg px-3 py-2.5 border', item.stock === 0 ? 'border-danger/20 bg-danger/5' : 'border-warning/20 bg-warning/5')}>
-              <AlertTriangle className={cn('size-3.5 shrink-0', item.stock === 0 ? 'text-danger' : 'text-warning')} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[12.5px] font-medium text-ink truncate">{item.name}</div>
-                <div className="text-[11.5px] text-ink-3 truncate">{item.variant}</div>
-              </div>
-              <span className={cn('font-mono text-[13px] font-semibold shrink-0', item.stock === 0 ? 'text-danger' : 'text-warning')}>
-                {item.stock}
-              </span>
+            <li key={i}>
+              <Link
+                to={`/retailer/inventory?productId=${item.id}`}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 border transition-colors',
+                  item.stock === 0
+                    ? 'border-danger/20 bg-danger/5 hover:bg-danger/10'
+                    : 'border-warning/20 bg-warning/5 hover:bg-warning/10',
+                )}
+              >
+                <AlertTriangle className={cn('size-3.5 shrink-0', item.stock === 0 ? 'text-danger' : 'text-warning')} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] font-medium text-ink truncate">{item.name}</div>
+                  <div className="text-[11.5px] text-ink-3 truncate">{item.variant}</div>
+                </div>
+                <span className={cn('font-mono text-[13px] font-semibold shrink-0', item.stock === 0 ? 'text-danger' : 'text-warning')}>
+                  {item.stock}
+                </span>
+              </Link>
             </li>
           ))}
         </ul>

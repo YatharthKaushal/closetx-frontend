@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/date-range-picker';
 import { FreshnessLabel } from '@/components/ui/freshness-label';
+import { WaterfallChart } from '@/components/ui/waterfall-chart';
+import { ViewToggle, type ReportView } from '@/components/ui/view-toggle';
 
 type RevenueSummary = {
   windowStart: string;
@@ -27,9 +29,11 @@ type RevenueSummary = {
   netMoneyInPaise: number;
 };
 
-export default function ReportRevenueSummary() {
+/** Revenue summary — headline KPIs plus a gross → net waterfall. */
+export function RevenueSummaryPanel() {
   const scope = useStoreScope();
   const [range, setRange] = useState<DateRangeValue>({ from: null, to: null });
+  const [view, setView] = useState<ReportView>('chart');
 
   const params = useMemo(() => {
     const p: Record<string, string> = {};
@@ -49,41 +53,79 @@ export default function ReportRevenueSummary() {
   const meta = unwrapMeta(data);
   const exportCsv = useServerCsv('revenue_summary', path, params);
 
-  return (
-    <Page>
-      <PageHeader
-        kicker="Reports"
-        title="Revenue summary"
-        description="Gross, refunds, commission, TCS, and net money-in for the selected window."
-        actions={
-          <>
-            <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
-            <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
-              Export CSV
-            </Button>
-          </>
-        }
-      />
+  const tableRows: Array<{ label: string; value: string; hint?: string }> = data
+    ? [
+        { label: 'Orders', value: data.ordersCount.toLocaleString('en-IN') },
+        { label: 'Gross sales', value: formatPaise(data.grossPaise) },
+        { label: 'Refunds', value: `−${formatPaise(data.refundsPaise)}`, hint: `${data.refundsCount} refunds` },
+        { label: 'Commission', value: `−${formatPaise(data.commissionPaise)}` },
+        { label: 'TCS', value: `−${formatPaise(data.tcsPaise)}` },
+        { label: 'Net of refunds', value: formatPaise(data.netOfRefundsPaise) },
+        { label: 'Net of commission', value: formatPaise(data.netOfCommissionPaise) },
+        { label: 'Net money in', value: formatPaise(data.netMoneyInPaise) },
+      ]
+    : [];
 
-      <div className="mb-4 max-w-md">
-        <DateRangePicker value={range} onChange={setRange} placeholder="Last 30 days" />
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="w-full max-w-xs">
+          <DateRangePicker value={range} onChange={setRange} placeholder="Last 30 days" />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <FreshnessLabel generatedAtIst={meta?.generatedAtIst} />
+          <ViewToggle value={view} onChange={setView} />
+          <Button variant="outline" size="sm" iconLeft={<Download className="size-3.5" />} onClick={() => exportCsv()}>
+            CSV
+          </Button>
+        </div>
       </div>
 
       {isLoading || !data ? (
         <Skeleton className="h-60" />
+      ) : view === 'chart' ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Orders" value={data.ordersCount.toLocaleString('en-IN')} />
+            <Kpi label="Gross" value={formatPaise(data.grossPaise)} />
+            <Kpi label="Refunds" value={formatPaise(data.refundsPaise)} sub={`${data.refundsCount} refunds`} />
+            <Kpi label="Net money in" value={formatPaise(data.netMoneyInPaise)} accent />
+          </div>
+          <Card>
+            <CardContent className="p-5">
+              <div className="kicker mb-3">Where the money goes</div>
+              <WaterfallChart
+                steps={[
+                  { label: 'Gross sales', amountPaise: data.grossPaise, kind: 'start' },
+                  { label: 'Refunds', amountPaise: -data.refundsPaise, kind: 'deduction' },
+                  { label: 'Commission', amountPaise: -data.commissionPaise, kind: 'deduction' },
+                  { label: 'TCS', amountPaise: -data.tcsPaise, kind: 'deduction' },
+                  { label: 'Net money in', amountPaise: data.netMoneyInPaise, kind: 'total' },
+                ]}
+              />
+            </CardContent>
+          </Card>
+        </>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label="Orders" value={data.ordersCount.toLocaleString('en-IN')} />
-          <Kpi label="Gross" value={formatPaise(data.grossPaise)} />
-          <Kpi label="Refunds" value={formatPaise(data.refundsPaise)} sub={`${data.refundsCount} refunds`} />
-          <Kpi label="Commission" value={formatPaise(data.commissionPaise)} />
-          <Kpi label="TCS" value={formatPaise(data.tcsPaise)} />
-          <Kpi label="Net of refunds" value={formatPaise(data.netOfRefundsPaise)} />
-          <Kpi label="Net of commission" value={formatPaise(data.netOfCommissionPaise)} />
-          <Kpi label="Net money in" value={formatPaise(data.netMoneyInPaise)} accent />
-        </div>
+        <Card>
+          <CardContent className="p-0">
+            <table className="w-full text-[12.5px]">
+              <tbody>
+                {tableRows.map((r) => (
+                  <tr key={r.label} className="border-t border-line first:border-t-0">
+                    <td className="px-4 py-2.5 text-ink-2">{r.label}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-ink">
+                      {r.value}
+                      {r.hint && <span className="ml-2 font-sans text-[11px] text-ink-4">{r.hint}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
       )}
-    </Page>
+    </div>
   );
 }
 
@@ -96,5 +138,19 @@ function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?
         {sub && <div className="mt-1 text-[11px] text-ink-4">{sub}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+/** Standalone page wrapper — kept for the admin store-scoped report routes. */
+export default function ReportRevenueSummary() {
+  return (
+    <Page>
+      <PageHeader
+        kicker="Analytics"
+        title="Revenue summary"
+        description="Total sales, refunds, fees, TCS, and the money you keep, for the period you choose."
+      />
+      <RevenueSummaryPanel />
+    </Page>
   );
 }

@@ -5,8 +5,7 @@ import { toast } from 'sonner';
 import { ArrowUpRight, Plus } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { enforcementStepMeta, formatAge } from '@/lib/status';
-import type { AdminStoreView, PolicyEnforcementAction } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
+import type { PolicyEnforcementAction } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +13,7 @@ import { Empty } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { Label, FieldError } from '@/components/ui/label';
+import { StoreCombobox } from '@/components/ui/store-combobox';
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,7 @@ import {
 type EnforcementStep = 'warning_1' | 'warning_2' | 'warning_3' | 'suspension' | 'termination' | 'lifted';
 type BreachKind = 'acceptance_rate' | 'fulfilment_sla' | 'dispute_rate' | 'return_rate' | 'kyc_overdue' | 'policy_violation';
 
-export default function AdminPolicyEnforcement() {
+export function PolicyEnforcementPanel() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'policy-enforcement'],
@@ -41,17 +41,16 @@ export default function AdminPolicyEnforcement() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Compliance"
-        title="Policy enforcement"
-        description="Warning ladder, suspensions and terminations tracked per retailer. Move up the ladder when breaches recur; lift the warning when fixed."
-        actions={
-          <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setDialogOpen(true)}>
-            New enforcement action
-          </Button>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Warning ladder, suspensions and terminations tracked per retailer. Move up the ladder when
+          breaches recur; lift the warning when fixed.
+        </p>
+        <Button variant="ink" caps iconLeft={<Plus className="size-3.5" />} onClick={() => setDialogOpen(true)}>
+          New enforcement action
+        </Button>
+      </div>
 
       {isLoading ? (
         <div className="space-y-2">
@@ -118,7 +117,7 @@ export default function AdminPolicyEnforcement() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
       />
-    </Page>
+    </div>
   );
 }
 
@@ -139,12 +138,6 @@ export function IssueEnforcementDialog({
   const [breachKind, setBreachKind] = useState<BreachKind>(prefilledBreachKind ?? 'acceptance_rate');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  const stores = useQuery({
-    queryKey: ['admin', 'stores', 'all'],
-    queryFn: () => api<AdminStoreView[]>('/admin/stores'),
-    enabled: open,
-  });
 
   const submit = useMutation({
     mutationFn: () =>
@@ -200,19 +193,7 @@ export function IssueEnforcementDialog({
         >
           <div>
             <Label htmlFor="pe-store-id" required>Store</Label>
-            <Select value={storeId} onValueChange={setStoreId} disabled={stores.isLoading}>
-              <SelectTrigger id="pe-store-id">
-                <SelectValue placeholder={stores.isLoading ? 'Loading stores…' : 'Pick a store'} />
-              </SelectTrigger>
-              <SelectContent>
-                {(stores.data ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    <span className="font-medium">{s.legalName}</span>
-                    <span className="ml-2 font-mono text-[11px] text-ink-3">{s.id}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <StoreCombobox value={storeId} onChange={setStoreId} />
           </div>
 
           <div>

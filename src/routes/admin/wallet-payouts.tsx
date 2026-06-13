@@ -4,7 +4,6 @@ import { Banknote, Send, Timer } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
 import type { WalletPayout, WalletPayoutStatus } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,14 +20,14 @@ const STATUS_TONE: Record<WalletPayoutStatus, 'warning' | 'info' | 'success' | '
 };
 
 const STATUS_LABEL: Record<WalletPayoutStatus, string> = {
-  pending_claim: 'Awaiting consumer claim',
-  awaiting_bank: 'Awaiting bank disbursal',
+  pending_claim: 'Waiting for customer to claim',
+  awaiting_bank: 'Ready to pay to bank',
   paid: 'Paid',
-  escheated: 'Escheated to platform',
+  escheated: 'Returned to platform',
   failed: 'Failed',
 };
 
-export default function AdminWalletPayouts() {
+export function WalletPayoutsPanel() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'wallet-payouts'],
@@ -39,7 +38,7 @@ export default function AdminWalletPayouts() {
   async function disburse(id: string) {
     try {
       await api(`/admin/wallet-payouts/${id}/disburse`, { method: 'POST' });
-      toast.success('Disbursal queued');
+      toast.success('Payout queued');
       void queryClient.invalidateQueries({ queryKey: ['admin', 'wallet-payouts'] });
     } catch { toast.error('Failed'); }
   }
@@ -47,18 +46,18 @@ export default function AdminWalletPayouts() {
   async function escheat(id: string) {
     try {
       await api(`/admin/wallet-payouts/${id}/escheat`, { method: 'POST' });
-      toast.success('Escheated');
+      toast.success('Returned to platform');
       void queryClient.invalidateQueries({ queryKey: ['admin', 'wallet-payouts'] });
     } catch { toast.error('Failed'); }
   }
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Wallet"
-        title="Wallet payouts"
-        description="Closed accounts with leftover wallet balance. Disburse to verified bank during the claim window; escheat to the platform after."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Customers who closed their account but still had money in their wallet. Pay it to their
+        verified bank account while the claim window is open; after it closes, the unclaimed money
+        is returned to the platform.
+      </p>
 
       <Tabs defaultValue="active">
         <TabsList>
@@ -73,7 +72,7 @@ export default function AdminWalletPayouts() {
           <List loading={isLoading} list={list.filter((p) => p.status === 'paid' || p.status === 'escheated')} onDisburse={disburse} onEscheat={escheat} />
         </TabsContent>
       </Tabs>
-    </Page>
+    </div>
   );
 }
 
@@ -110,12 +109,12 @@ function List({ loading, list, onDisburse, onEscheat }: { loading: boolean; list
                 </div>
                 {p.status === 'awaiting_bank' && (
                   <Button size="sm" variant="accent" iconLeft={<Send className="size-3.5" />} onClick={() => onDisburse(p.id)}>
-                    Disburse
+                    Pay out
                   </Button>
                 )}
                 {p.status === 'pending_claim' && claimDaysLeft <= 0 && (
                   <Button size="sm" variant="outline" iconLeft={<Banknote className="size-3.5" />} onClick={() => onEscheat(p.id)}>
-                    Escheat to platform
+                    Return to platform
                   </Button>
                 )}
               </div>

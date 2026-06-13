@@ -43,7 +43,6 @@ interface ListingRow {
   name: string;
   status: 'draft' | 'active' | 'retired';
   gender: string;
-  badge: string;
   galleryUrls: string[];
   brand: { name: string } | null;
   category: { label: string } | null;
@@ -226,9 +225,6 @@ export default function AdminStoreListings() {
                           <span className="font-medium text-ink-2">{l.brand?.name ?? 'Unbranded'}</span>
                           {' · '}{l.category?.label ?? 'Uncategorised'}
                           {' · '}<span className="capitalize">{l.gender}</span>
-                          {l.badge !== 'none' && (
-                            <>{' · '}<span className="capitalize text-accent">{l.badge}</span></>
-                          )}
                         </span>
                       </div>
                     </td>

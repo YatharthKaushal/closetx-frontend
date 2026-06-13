@@ -6,7 +6,7 @@ export type Envelope<T> =
   | { success: false; error: { code: string; message: string; details?: unknown } };
 
 export type AdminSubRole = 'super_admin' | 'ops_admin' | 'support';
-export type RetailerSubRole = 'owner' | 'manager' | 'staff';
+export type RetailerSubRole = 'owner' | 'manager' | 'staff' | 'delivery_agent';
 
 export type ConsumerStatus = 'active' | 'suspended' | 'closed';
 export type RetailerStatus =
@@ -20,7 +20,6 @@ export type RetailerStatus =
 export type StoreStatus = 'onboarding' | 'active' | 'paused' | 'suspended' | 'terminated';
 export type ListingStatus = 'draft' | 'active' | 'retired' | 'taken_down';
 export type Gender = 'her' | 'him' | 'unisex';
-export type ListingBadge = 'new' | 'hot' | 'trending' | 'none';
 export type ListingPolicy = 'return' | 'replace' | 'final_sale';
 
 export type AdminProfile = {
@@ -37,6 +36,8 @@ export type RetailerProfile = {
   gstin: string;
   status: RetailerStatus;
   storeId: string | null;
+  /** Present on the login response; used to route delivery agents to their surface. */
+  subRole?: RetailerSubRole;
   permanentSuspend?: boolean;
   suspendReason?: string | null;
 };
@@ -45,6 +46,7 @@ export type Store = {
   id: string;
   legalName: string;
   gstin: string;
+  gstScheme: 'regular' | 'composition';
   address: string;
   stateCode: string;
   lat: number;
@@ -84,9 +86,40 @@ export type Category = {
   isActive: boolean;
 };
 
+/** Parent level of the variant hierarchy — one row per color ("Red"). Every
+ *  listing owns one `isDefault` group holding single-product and custom-template
+ *  variants. */
+export type VariantGroup = {
+  id: string;
+  listingId: string;
+  name: string;
+  /** Optional #RRGGBB swatch; the name stays free-form ("Midnight Green"). */
+  colorHex: string | null;
+  sortOrder: number;
+  isDefault: boolean;
+  isActive: boolean;
+};
+
+/** One sizing system ("UK", "Letter sizes") with its pick-list values, scoped
+ *  to category slugs server-side (empty = universal). */
+export type SizeScale = {
+  id: string;
+  name: string;
+  values: string[];
+  categorySlugs: string[];
+  sortOrder: number;
+  isActive: boolean;
+};
+
+/** How a listing's variants are structured (server-recorded wizard choice). */
+export type VariantMode = 'single' | 'color_size' | 'custom';
+
 export type Variant = {
   id: string;
   listingId: string;
+  storeId?: string;
+  /** Parent group (color for the system flow; the default group otherwise). */
+  groupId: string;
   sku: string | null;
   attributes: Record<string, string>;
   attributesLabel: string;
@@ -94,12 +127,17 @@ export type Variant = {
   stock: number;
   reserved: number;
   pricePaise: number;
+  /** Struck-through "was" price in paise; null when not on sale. */
+  compareAtPrice: number | null;
   isActive: boolean;
   /** True when a template edit removed an axis/value this variant was using. */
   attributesOutOfTemplate: boolean;
 };
 
-export type AgeGroup = 'kids' | 'teens' | 'adults' | 'all';
+/** System age ranges a product can target (multi-select; [] = unspecified).
+ *  Mirrors AGE_RANGES in the backend listings validators. */
+export const AGE_RANGES = ['0-2', '3-7', '8-12', '13-17', '18-24', '25-40', '40+'] as const;
+export type AgeRange = (typeof AGE_RANGES)[number];
 
 export type Listing = {
   id: string;
@@ -109,13 +147,14 @@ export type Listing = {
   templateId: string | null;
   name: string;
   description: string | null;
+  /** Rich HTML, sanitized server-side on write — safe to render verbatim. */
+  descriptionLong: string | null;
   hsn: string | null;
   gender: Gender;
-  badge: ListingBadge;
   listingPolicy: ListingPolicy;
   galleryUrls: string[];
   occasion: string[];
-  ageGroup: AgeGroup | null;
+  ageGroups: AgeRange[];
   status: ListingStatus;
   /** Latest moderation takedown note — only present when status === 'taken_down'. */
   takedownReason?: string | null;
@@ -123,9 +162,11 @@ export type Listing = {
   ratingCount: number;
   createdAt: string;
   updatedAt: string;
+  variantMode: VariantMode;
   brand?: Brand;
   category?: Category;
   variants?: Variant[];
+  variantGroups?: VariantGroup[];
 };
 
 /** One row of the retailer's flat inventory roster — variant + the bits of its
@@ -541,7 +582,7 @@ export type IssueListRow = {
   closedAt: string | null;
   /** Compatibility shims for pages that still read legacy field names */
   targetKind?: 'order' | 'return';
-  targetId?: string;
+  targetId?: string | null;
   openedAt?: string;
   decidedByAdminId?: string | null;
 };
@@ -602,12 +643,19 @@ export type OrderListRow = {
   status: OrderStatus;
   storeId?: string;
   storeName?: string;
+  /** Store's contact phone, for the merged Store column. `null` if unset. */
+  storePhone?: string | null;
   consumerId?: string;
   consumerName: string;
   consumerPhone?: string;
   deliveryMethod: DeliveryMethod;
   paymentMethod: PaymentMethod;
+  /** Capture state of the order's payment (resolved from the payment chain).
+   *  `null` when the order has no payment row yet. */
+  paymentStatus?: PaymentStatus | null;
   itemCount: number;
+  /** Compact line-item preview (capped to 4) for board/history cards. */
+  items?: { name: string; qty: number; listingId: string }[];
   grandTotalPaise: number;
   placedAt: string;
   acceptedAt: string | null;
@@ -616,6 +664,8 @@ export type OrderListRow = {
   acceptanceDeadlineAt?: string | null;
   /** True if the order has at least one open dispute/query — surfaced to admin filters. */
   hasOpenDispute?: boolean;
+  /** True if a return on this order is awaiting the store's accept/decline decision. */
+  hasPendingReturn?: boolean;
   /** §9 — pickup slot snapshot for delivery_method='pickup' orders. */
   pickupSlotStart?: string | null;
   pickupSlotEnd?: string | null;
@@ -764,7 +814,73 @@ export type OrderDetail = {
   returns?: Return[];
   refunds?: Refund[];
   heldItems?: HeldItem[];
+  /** All disputes tied to this order (or its returns) — open and decided/closed. */
+  disputes?: OrderDispute[];
+  /** Thin summary of the live dispute, if any — gates raise-dispute/request-refund. */
+  openDispute?: { id: string; status: string } | null;
 };
+
+/** A dispute (backed by customerIssues) attached to an order or one of its returns. */
+export type OrderDispute = {
+  id: string;
+  status: IssueStatus;
+  subject: string;
+  description: string;
+  openedByActorType: ActorType;
+  createdAt: string;
+  decision: IssueDecision | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  returnId: string | null;
+  /** Retailer funds withheld pending the admin decision (paise), when held. */
+  heldAmountPaise: number | null;
+};
+
+// ─────────────── Delivery agent surface (/retailer/deliveries) ───────────────
+export type DeliveryItemRow = {
+  id: string;
+  listingNameSnap: string;
+  qty: number;
+  listingId: string;
+};
+
+export type DeliveryRow = {
+  id: string;
+  status: OrderStatus;
+  deliveryMethod: DeliveryMethod;
+  consumerNameSnap: string;
+  consumerPhoneSnap: string;
+  addressLine1Snap: string | null;
+  addressLine2Snap: string | null;
+  addressCitySnap: string | null;
+  addressPincodeSnap: string | null;
+  grandTotalPaise: number;
+  doorWindowExpiresAt: string | null;
+  placedAt: string;
+  items: DeliveryItemRow[];
+};
+
+export type DeliveryDetail = {
+  id: string;
+  status: OrderStatus;
+  deliveryMethod: DeliveryMethod;
+  consumerNameSnap: string;
+  consumerPhoneSnap: string;
+  consumerEmailSnap?: string;
+  addressLine1Snap: string | null;
+  addressLine2Snap: string | null;
+  addressCitySnap: string | null;
+  addressPincodeSnap: string | null;
+  grandTotalPaise: number;
+  doorWindowExpiresAt: string | null;
+  doorWindowExtendedAt: string | null;
+  placedAt: string;
+  items: OrderItem[];
+  availableTransitions: AvailableTransition[];
+};
+
+/** Per-item door decision the agent records. */
+export type DoorDecision = 'kept' | 'returned' | 'refused' | 'return_rejected';
 
 export type PlaceOrderResult = {
   orderId: string;
@@ -1235,14 +1351,33 @@ export type AttributeTemplate = {
   id: string;
   name: string;
   isPlatformDefault?: boolean;
+  ownerStoreId?: string | null;
   axes: Array<{
     name: string;
     type: AttributeAxisType;
     allowedValues: string[];
   }>;
   usedByListingCount: number;
+  usageCount: number;
+  lastUsedAt: string | null;
   updatedAt: string | null;
 };
+
+/** One uploaded asset in the store's media library (GET /retailer/media). */
+export type MediaItem = {
+  id: string;
+  url: string;
+  publicId: string | null;
+  width: number | null;
+  height: number | null;
+  bytes: number | null;
+  resourceType: string;
+  mimetype: string | null;
+  folder: string | null;
+  createdAt: string;
+};
+
+export type Paginated<T> = { items: T[]; nextCursor: string | null };
 
 export type ListingAuditEntry = {
   id: string;
@@ -1730,8 +1865,19 @@ export type IssueDetail = IssueListRow & {
   messages: IssueMessage[];
   transitions: IssueTransition[];
   evidencePhotos?: IssueEvidencePhoto[];
+  /** Returned physical goods sitting at the store for this dispute's return(s). */
+  heldItems?: IssueHeldItem[];
   partyContext?: IssuePartyContext | null;
   payoutAdjustmentPaise?: number | null;
+};
+
+/** A returned item held at the store pending this dispute's outcome. */
+export type IssueHeldItem = {
+  id: string;
+  status: string;
+  disposition: string | null;
+  holdingWindowExpiresAt: string | null;
+  resolvedAt: string | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────

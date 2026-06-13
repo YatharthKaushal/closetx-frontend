@@ -47,6 +47,8 @@ export default function AttributeTemplateEditor() {
     name: '',
     axes: [{ name: '', type: 'enum', allowedValues: [] }],
     usedByListingCount: 0,
+    usageCount: 0,
+    lastUsedAt: null,
     updatedAt: null,
   });
   const [saving, setSaving] = useState(false);

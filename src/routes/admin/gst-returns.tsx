@@ -5,7 +5,7 @@ import { Download, FileText, Sparkles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatAge } from '@/lib/status';
 import type { GstReturnFile } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ const KIND_LABEL: Record<GstReturnFile['kind'], string> = {
   tcs_reconciliation: 'TCS reconciliation',
 };
 
-export default function AdminGstReturns() {
+export function GstReturnsPanel() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'gst-returns'],
@@ -46,12 +46,11 @@ export default function AdminGstReturns() {
   }, [list]);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Invoicing"
-        title="GST returns"
-        description="Monthly GSTR-1 + GSTR-3B file generator and TCS reconciliation export. Generated files are signed snapshots — re-generation creates a new version."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Generate the monthly GSTR-1 and GSTR-3B files and the TCS reconciliation export. Each
+        generated file is a locked snapshot — generating again makes a new version.
+      </p>
 
       {isLoading ? (
         <Skeleton className="h-72" />
@@ -98,6 +97,6 @@ export default function AdminGstReturns() {
           ))}
         </div>
       )}
-    </Page>
+    </div>
   );
 }

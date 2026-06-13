@@ -109,6 +109,17 @@ export default function AdminPromotionDetail() {
         }
       />
 
+      {p.storeId && (
+        <div className="-mt-2 mb-4 flex flex-wrap gap-2">
+          <Link
+            to={`/admin/stores?storeId=${p.storeId}`}
+            className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2 py-0.5 text-[11.5px] text-ink-3 hover:text-ink hover:bg-bg-3"
+          >
+            Open store
+          </Link>
+        </div>
+      )}
+
       {/* Lifecycle action bar */}
       <div className="-mt-2 mb-8 flex flex-wrap items-center gap-2 border-b border-rule pb-4">
         {canActivate && (

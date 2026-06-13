@@ -146,7 +146,7 @@ export function useAdminDisputeBanner() {
         tone: 'info',
         title: idleDisputes.title,
         body: idleDisputes.body,
-        cta: { label: 'Triage disputes', href: '/admin/issues?status=awaiting_admin' },
+        cta: { label: 'Triage disputes', href: '/admin/disputes?status=awaiting_admin' },
         dismissible: true,
         portal: 'admin',
       });

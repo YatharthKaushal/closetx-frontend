@@ -5,7 +5,6 @@ import { Lock } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { clubbingDefaultMeta } from '@/lib/status';
 import type { AppliedTo, ClubbingDefault, ClubbingMatrixCell } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty } from '@/components/ui/empty';
 import { Button } from '@/components/ui/button';
@@ -49,7 +48,7 @@ const APPLIED_TO_ORDER: AppliedTo[] = [
   'loyalty',
 ];
 
-export default function AdminClubbing() {
+export function ClubbingPanel() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<ClubbingMatrixCell | null>(null);
 
@@ -74,17 +73,12 @@ export default function AdminClubbing() {
   for (const c of data ?? []) lookup.set(`${c.appliedToA}:${c.appliedToB}`, c);
 
   return (
-    <Page>
-      <PageHeader
-        title={<>Clubbing matrix</>}
-        description={
-          <>
-            Default rule for every pair of promotion types. Per-promotion overrides can flip
-            an <em>allowed</em> or <em>disallowed</em> default; <em>always-allowed</em> cells
-            (loyalty + anything, free shipping + coupon) are locked and cannot be overridden.
-          </>
-        }
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Default rule for every pair of promotion types. Per-promotion overrides can flip an{' '}
+        <em>allowed</em> or <em>disallowed</em> default; <em>always-allowed</em> cells (loyalty +
+        anything, free shipping + coupon) are locked and cannot be overridden.
+      </p>
 
       {isLoading ? (
         <Skeleton className="h-[420px]" />
@@ -195,7 +189,7 @@ export default function AdminClubbing() {
         }
         loading={upsert.isPending}
       />
-    </Page>
+    </div>
   );
 }
 

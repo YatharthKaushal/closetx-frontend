@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft, ArrowUpRight, Eye, Play } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
 import type { AdminPayoutRow } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +23,8 @@ import {
 import { Label, FieldError } from '@/components/ui/label';
 import { StoreCombobox } from '@/components/ui/store-combobox';
 import { BankAccountSelect } from '@/components/ui/bank-account-select';
+import { Th, Td, useSort, sortRows, sortProps } from '@/components/ui/table';
+import { bulkResultToast, runBulk } from '@/components/admin/bulk-result-toast';
 
 type PreviewResp = {
   grossPaise: number;
@@ -41,8 +42,8 @@ type PreviewResp = {
   unattachedAdjustmentIds: string[];
 };
 
-export default function AdminPayoutsPipeline() {
-  const navigate = useNavigate();
+export function PayoutsPipelinePanel() {
+  const qc = useQueryClient();
   const [params] = useSearchParams();
   const orderIdFromDeepLink = params.get('orderId');
   const [cycleOpen, setCycleOpen] = useState<'preview' | 'run' | null>(null);
@@ -55,32 +56,47 @@ export default function AdminPayoutsPipeline() {
   const failed = list.filter((p) => p.status === 'failed');
   const others = list.filter((p) => p.status !== 'failed');
 
+  const retryAllFailed = useMutation({
+    mutationFn: (ids: string[]) =>
+      runBulk(
+        ids.map((id) => ({
+          id,
+          run: () => api(`/admin/payouts/${id}/retry`, { method: 'POST' }),
+        })),
+      ),
+    onSuccess: (result) => {
+      const byId = new Map(list.map((p) => [p.id, `${p.storeName} · ${p.period}`]));
+      bulkResultToast({
+        result,
+        verb: 'retried',
+        describe: (id) => byId.get(id) ?? id.slice(0, 8),
+      });
+      void qc.invalidateQueries({ queryKey: ['admin', 'payouts-pipeline'] });
+    },
+  });
+
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Payouts pipeline"
-        description="Every retailer's payouts. Failed cycles need bank-detail update or manual retry — the queue is pinned at the top."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" iconLeft={<Eye className="size-3.5" />} onClick={() => setCycleOpen('preview')}>
-              Preview cycle
+    <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+          Money owed to each retailer, ready to send to their bank. A payout that failed — usually
+          because of wrong bank details — needs fixing and re-sending, and those are shown at the
+          top so you can deal with them first.
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" iconLeft={<Eye className="size-3.5" />} onClick={() => setCycleOpen('preview')}>
+            Preview payout cycle
+          </Button>
+          <Button variant="accent" size="sm" iconLeft={<Play className="size-3.5" />} onClick={() => setCycleOpen('run')}>
+            Run payout cycle
+          </Button>
+          {orderIdFromDeepLink && (
+            <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
+              <Link to={`/admin/orders/${orderIdFromDeepLink}`}>Back to order</Link>
             </Button>
-            <Button variant="accent" size="sm" iconLeft={<Play className="size-3.5" />} onClick={() => setCycleOpen('run')}>
-              Run cycle
-            </Button>
-            {orderIdFromDeepLink ? (
-              <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-                <Link to={`/admin/orders/${orderIdFromDeepLink}`}>Back to order</Link>
-              </Button>
-            ) : (
-              <Button variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />} onClick={() => navigate(-1)}>
-                Back
-              </Button>
-            )}
-          </div>
-        }
-      />
+          )}
+        </div>
+      </div>
 
       <Tabs defaultValue="failed">
         <TabsList>
@@ -88,7 +104,28 @@ export default function AdminPayoutsPipeline() {
           <TabsTrigger value="all">All payouts <span className="ml-1.5 text-ink-3">{list.length}</span></TabsTrigger>
         </TabsList>
         <TabsContent value="failed">
-          {isLoading ? <Skeleton className="h-32" /> : failed.length === 0 ? <Empty kicker="All clear" title="No failed payouts." /> : <Table list={failed} />}
+          {isLoading ? (
+            <Skeleton className="h-32" />
+          ) : failed.length === 0 ? (
+            <Empty kicker="All clear" title="No failed payouts." />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={retryAllFailed.isPending}
+                  onClick={() => {
+                    if (!window.confirm(`Retry all ${failed.length} failed payouts?`)) return;
+                    retryAllFailed.mutate(failed.map((p) => p.id));
+                  }}
+                >
+                  Retry all failed
+                </Button>
+              </div>
+              <Table list={failed} />
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="all">
           {isLoading ? <Skeleton className="h-32" /> : <Table list={[...failed, ...others]} />}
@@ -96,47 +133,56 @@ export default function AdminPayoutsPipeline() {
       </Tabs>
 
       <CycleDialog mode={cycleOpen} onClose={() => setCycleOpen(null)} />
-    </Page>
+    </div>
   );
 }
 
 function Table({ list }: { list: AdminPayoutRow[] }) {
+  const { sort, toggle } = useSort<'store' | 'period' | 'amount' | 'status' | 'initiated'>({ key: 'initiated', dir: 'desc' });
+  const sorted = sortRows(list, sort, (p, key) => {
+    if (key === 'store') return p.storeName;
+    if (key === 'period') return p.period;
+    if (key === 'amount') return p.amountPaise;
+    if (key === 'status') return p.status;
+    if (key === 'initiated') return p.initiatedAt ? new Date(p.initiatedAt) : null;
+    return null;
+  });
   return (
     <Card>
       <CardContent className="overflow-x-auto p-0">
         <table className="w-full text-[12.5px]">
           <thead className="bg-bg-2/40">
             <tr>
-              <th className="px-3 py-2 text-left font-medium text-ink-3">Store</th>
-              <th className="px-3 py-2 text-left font-medium text-ink-3">Period</th>
-              <th className="px-3 py-2 text-right font-medium text-ink-3">Amount</th>
-              <th className="px-3 py-2 text-left font-medium text-ink-3">Status</th>
-              <th className="px-3 py-2 text-right font-medium text-ink-3">Retries</th>
-              <th className="px-3 py-2 text-left font-medium text-ink-3">Initiated</th>
-              <th className="px-3 py-2"></th>
+              <Th {...sortProps(sort, 'store', toggle)}>Store</Th>
+              <Th {...sortProps(sort, 'period', toggle)}>Period</Th>
+              <Th className="text-right" {...sortProps(sort, 'amount', toggle)}>Amount</Th>
+              <Th {...sortProps(sort, 'status', toggle)}>Status</Th>
+              <Th className="text-right">Retries</Th>
+              <Th {...sortProps(sort, 'initiated', toggle)}>Initiated</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>
-            {list.map((p) => (
+            {sorted.map((p) => (
               <tr key={p.id} className="border-t border-line">
-                <td className="px-3 py-2 text-ink">{p.storeName}</td>
-                <td className="px-3 py-2 font-mono text-ink-2">{p.period}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatPaise(p.amountPaise)}</td>
-                <td className="px-3 py-2">
+                <Td className="text-ink">{p.storeName}</Td>
+                <Td className="font-mono text-ink-2">{p.period}</Td>
+                <Td className="text-right font-mono">{formatPaise(p.amountPaise)}</Td>
+                <Td>
                   <Badge
                     tone={p.status === 'paid' ? 'success' : p.status === 'failed' ? 'danger' : p.status === 'processing' ? 'info' : 'warning'}
                     pulse={p.status === 'failed'}
                   >
                     {p.status.replace(/_/g, ' ')}
                   </Badge>
-                </td>
-                <td className="px-3 py-2 text-right">{p.retryCount}</td>
-                <td className="px-3 py-2 text-[11.5px] text-ink-3">{p.initiatedAt ? formatAge(p.initiatedAt) : '—'}</td>
-                <td className="px-3 py-1.5 text-right">
+                </Td>
+                <Td className="text-right">{p.retryCount}</Td>
+                <Td className="text-[11.5px] text-ink-3">{p.initiatedAt ? formatAge(p.initiatedAt) : '—'}</Td>
+                <Td className="text-right">
                   <Button asChild variant="outline" size="sm" iconRight={<ArrowUpRight className="size-3.5" />}>
-                    <Link to={`/admin/payouts-pipeline/${p.id}`}>Open</Link>
+                    <Link to={`/admin/payouts/${p.id}`}>Open</Link>
                   </Button>
-                </td>
+                </Td>
               </tr>
             ))}
           </tbody>
@@ -234,13 +280,13 @@ function CycleDialog({ mode, onClose }: { mode: 'preview' | 'run' | null; onClos
                 <Row label="Commission" value={`−${formatPaise(preview.commissionPaise)}`} tone="warn" />
                 <Row label="Commission GST" value={`−${formatPaise(preview.commissionTaxPaise)}`} tone="warn" />
                 <Row label="TCS" value={`−${formatPaise(preview.tcsPaise)}`} tone="warn" />
-                <Row label="Refunds held" value={`−${formatPaise(preview.refundsHeldPaise)}`} tone="warn" />
-                <Row label="Dispute holds" value={`−${formatPaise(preview.disputeHoldPaise)}`} tone="warn" />
+                <Row label="Refunds held back" value={`−${formatPaise(preview.refundsHeldPaise)}`} tone="warn" />
+                <Row label="Money held for disputes" value={`−${formatPaise(preview.disputeHoldPaise)}`} tone="warn" />
                 <Row label="Adjustments" value={formatPaise(preview.adjustmentsPaise)} />
                 <div className="border-t border-line my-1" />
                 <Row label="Net" value={formatPaise(preview.netPaise)} tone="good" />
                 <div className="text-[11px] text-ink-4 mt-2">
-                  {preview.orderCount} orders · {preview.activeHoldIds.length} active holds · {preview.unattachedAdjustmentIds.length} pending adjustments
+                  {preview.orderCount} orders · {preview.activeHoldIds.length} amounts held · {preview.unattachedAdjustmentIds.length} adjustments pending
                 </div>
               </CardContent>
             </Card>

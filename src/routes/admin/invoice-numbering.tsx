@@ -3,14 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { InvoiceNumberingConfig } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { RoleGate } from '@/components/shell/RoleGate';
 import {
   Select,
   SelectContent,
@@ -19,15 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export default function AdminInvoiceNumbering() {
-  return (
-    <RoleGate kind="admin" subRole="super_admin">
-      <Inner />
-    </RoleGate>
-  );
-}
-
-function Inner() {
+export function InvoiceNumberingPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'invoice-numbering'],
     queryFn: () => api<InvoiceNumberingConfig[]>('/admin/invoice-numbering'),
@@ -35,12 +26,11 @@ function Inner() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Invoicing"
-        title="Invoice numbering"
-        description="Per legal entity prefix + numbering pattern. Edits take effect on the next invoice issued — never retroactive."
-      />
+    <div>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        The invoice-number prefix and pattern for each legal entity. Changes apply only to the next
+        invoice issued — they never change invoices already created.
+      </p>
 
       {isLoading ? (
         <Skeleton className="h-72" />
@@ -49,7 +39,7 @@ function Inner() {
           {list.map((cfg) => <ConfigCard key={cfg.legalEntityId} initial={cfg} />)}
         </div>
       )}
-    </Page>
+    </div>
   );
 }
 

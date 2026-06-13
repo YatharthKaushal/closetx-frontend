@@ -21,6 +21,8 @@ export function mockAttributeTemplates(): AttributeTemplate[] {
         { name: 'Color', type: 'color', allowedValues: ['Black', 'White', 'Indigo', 'Saffron', 'Maroon'] },
       ],
       usedByListingCount: 18,
+      usageCount: 0,
+      lastUsedAt: null,
       updatedAt: new Date(now() - DAY * 14).toISOString(),
     },
     {
@@ -31,6 +33,8 @@ export function mockAttributeTemplates(): AttributeTemplate[] {
         { name: 'Width', type: 'enum', allowedValues: ['Narrow', 'Regular', 'Wide'] },
       ],
       usedByListingCount: 4,
+      usageCount: 0,
+      lastUsedAt: null,
       updatedAt: new Date(now() - DAY * 30).toISOString(),
     },
     {
@@ -41,6 +45,8 @@ export function mockAttributeTemplates(): AttributeTemplate[] {
         { name: 'Length (in)', type: 'numeric', allowedValues: ['16', '18', '20', '24'] },
       ],
       usedByListingCount: 0,
+      usageCount: 0,
+      lastUsedAt: null,
       updatedAt: new Date(now() - DAY * 90).toISOString(),
     },
   ];

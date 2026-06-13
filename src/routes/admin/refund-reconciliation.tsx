@@ -11,7 +11,6 @@ import {
   refundStatusMeta,
 } from '@/lib/status';
 import type { Refund, RefundStatus } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,17 +24,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Segmented } from '@/components/ui/segmented';
+import { PostPayoutRecoveryPanel } from './post-payout-recovery';
 
 const STATUS_OPTIONS: ReadonlyArray<{ value: RefundStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All statuses' },
   { value: 'pending', label: 'Pending' },
   { value: 'processing', label: 'Processing' },
   { value: 'succeeded', label: 'Succeeded' },
-  { value: 'partially_disbursed', label: 'Partially disbursed' },
+  { value: 'partially_disbursed', label: 'Partly paid' },
   { value: 'failed', label: 'Failed' },
 ];
 
-export default function AdminRefunds() {
+export function RefundsPanel() {
+  const [section, setSection] = useState<'refunds' | 'recovery'>('refunds');
   const [status, setStatus] = useState<RefundStatus | 'all'>('all');
   const qc = useQueryClient();
 
@@ -74,17 +76,33 @@ export default function AdminRefunds() {
   const list = data ?? [];
 
   return (
-    <Page>
-      <PageHeader
-        title="Refunds"
-        description="Every refund created when a return was accepted. Each has 1+ disbursements (wallet credit and/or original tender). Force-fail to test the retry chain."
+    <div>
+      <Segmented
+        value={section}
+        onChange={(v) => setSection(v as 'refunds' | 'recovery')}
+        size="md"
+        className="mb-4"
+        options={[
+          { value: 'refunds', label: 'Refunds' },
+          { value: 'recovery', label: 'Post-payout recovery' },
+        ]}
       />
 
+      {section === 'recovery' ? (
+        <PostPayoutRecoveryPanel />
+      ) : (
+        <>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Money sent back to customers after a return was accepted. A single refund can be paid out in
+        more than one way — as store wallet credit, back to the card or UPI the customer originally
+        paid with, or both. Each of those payments shows below the refund.
+      </p>
+
       <div className="mb-4 rounded-md border border-info/30 bg-info-soft/30 px-3 py-2 text-[12px] text-ink-2">
-        <strong className="text-info uppercase tracking-wide text-[11px]">Rule:</strong>{' '}
-        Loyalty Credit-Back on Refund Recompute proceeds even when the consumer is rewards-banned —
-        rewards bans only block <em>new</em> earn, never recovery of previously-earned points lost
-        to a refunded order.
+        <strong className="text-info uppercase tracking-wide text-[11px]">Good to know:</strong>{' '}
+        When an order is refunded, the customer gets back any loyalty points they earned on it — even
+        if they're banned from rewards. A rewards ban only stops them earning <em>new</em> points; it
+        never takes away points they had already earned.
       </div>
 
       <div className="mb-4 flex items-center gap-2">
@@ -144,7 +162,7 @@ export default function AdminRefunds() {
                           <div className="flex items-center gap-2 min-w-0">
                             <Badge tone={dm.tone}>{dm.label}</Badge>
                             <span className="text-ink-3">
-                              {d.destination === 'wallet' ? 'Wallet' : 'Original tender'}
+                              {d.destination === 'wallet' ? 'Store wallet' : 'Original payment method'}
                             </span>
                             <span className="font-mono tabular-nums text-ink">{formatPaise(d.amountPaise)}</span>
                             {d.previousDisbursementId && (
@@ -185,6 +203,8 @@ export default function AdminRefunds() {
           })}
         </ul>
       )}
-    </Page>
+        </>
+      )}
+    </div>
   );
 }

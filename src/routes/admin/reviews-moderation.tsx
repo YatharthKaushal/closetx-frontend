@@ -4,14 +4,13 @@ import { Check, Edit, Star, Trash2, UserX } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatAge } from '@/lib/status';
 import type { ReviewFlag } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export default function AdminReviewsModeration() {
+export function ReviewsModerationPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'reviews-moderation'],
     queryFn: () => api<ReviewFlag[]>('/admin/reviews-moderation'),
@@ -19,12 +18,11 @@ export default function AdminReviewsModeration() {
   const list = (data ?? []).filter((r) => r.status === 'open');
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Reviews"
-        title="Reviews moderation"
-        description="Flagged product reviews. Approve to keep, edit to scrub PII, take down to hide, or ban the author from reviewing further."
-      />
+    <div>
+      <p className="mb-4 max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+        Flagged product reviews. Approve to keep, edit to scrub PII, take down to hide, or ban the
+        author from reviewing further.
+      </p>
 
       {isLoading ? <Skeleton className="h-32" /> : list.length === 0 ? (
         <Empty kicker="All clear" title="No flagged reviews." />
@@ -57,6 +55,6 @@ export default function AdminReviewsModeration() {
           ))}
         </ul>
       )}
-    </Page>
+    </div>
   );
 }

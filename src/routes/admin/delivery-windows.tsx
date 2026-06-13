@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { DeliveryMethod } from '@/lib/types';
 import { deliveryMethodLabel } from '@/lib/status';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,7 @@ type DeliveryWindowConfig = {
   fees: Record<DeliveryMethod, { baseFeePaise: number; perKmFeePaise: number }>;
 };
 
-export default function AdminDeliveryWindows() {
+export function DeliveryWindowsPanel() {
   return (
     <RoleGate kind="admin" subRole="super_admin">
       <Inner />
@@ -37,22 +37,21 @@ function Inner() {
   if (data && !draft) setDraft(data);
 
   if (isLoading || !draft) {
-    return <Page><PageHeader title="Delivery windows" /><Skeleton className="h-72" /></Page>;
+    return <Skeleton className="h-72" />;
   }
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Fulfilment / Fees"
-        title="Delivery windows engine"
-        description="Service area, surge hook, and per-method fee table. Super-admin only — fee changes take effect on the next checkout."
-        actions={
-          <div className="flex items-center gap-2">
-            <MockDataBadge label="Mock data · backend wiring pending" />
-            <Button variant="accent" onClick={() => toast.info('Config saving not yet wired')}>Save</Button>
-          </div>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Delivery area, surge pricing, and the fee for each delivery method. Super-admin only — fee
+          changes apply from the next order.
+        </p>
+        <div className="flex items-center gap-2">
+          <MockDataBadge label="Mock data · backend wiring pending" />
+          <Button variant="accent" onClick={() => toast.info('Config saving not yet wired')}>Save</Button>
+        </div>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -134,6 +133,6 @@ function Inner() {
           </CardContent>
         </Card>
       </div>
-    </Page>
+    </div>
   );
 }

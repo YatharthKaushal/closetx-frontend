@@ -56,11 +56,11 @@ export default function RetailerIssues() {
   return (
     <Page>
       <PageHeader
-        title="Issues"
-        description="Issues linked to your store's orders and returns. Contact platform admin to respond."
+        title="Disputes"
+        description="Disputes linked to your store's orders and returns. Contact platform admin to respond."
         actions={
           <Button asChild variant="accent" size="sm" iconLeft={<Plus className="size-3.5" />}>
-            <Link to="/retailer/orders">New issue</Link>
+            <Link to="/retailer/orders">New dispute</Link>
           </Button>
         }
       />
@@ -82,7 +82,7 @@ export default function RetailerIssues() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-[12px] text-ink-3">{list.length} issue{list.length === 1 ? '' : 's'}</span>
+        <span className="text-[12px] text-ink-3">{list.length} dispute{list.length === 1 ? '' : 's'}</span>
       </div>
 
       {isLoading ? (
@@ -91,9 +91,9 @@ export default function RetailerIssues() {
         </div>
       ) : list.length === 0 ? (
         <Empty
-          kicker="No issues"
-          title="No issues for your store."
-          description="Platform admin opens issues against orders or returns in your store."
+          kicker="No disputes"
+          title="No disputes for your store."
+          description="Platform admin opens disputes against orders or returns in your store."
         />
       ) : (
         <ul className="space-y-3">
@@ -108,8 +108,7 @@ export default function RetailerIssues() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge tone={meta.tone} pulse={needsResponse}>{meta.label}</Badge>
                         {needsResponse && <Badge tone="warning" pulse>Needs your response</Badge>}
-                        <Badge tone="info" flat>{d.kind ?? 'dispute'}</Badge>
-                        <CopyableId value={d.id} label="issue id" />
+                        <CopyableId value={d.id} label="dispute id" />
                         <span className="text-[11.5px] text-ink-3">{formatAge(d.createdAt)}</span>
                       </div>
 
@@ -131,7 +130,7 @@ export default function RetailerIssues() {
                       <p className="mt-2 text-[13px] text-ink line-clamp-2">{d.description}</p>
 
                       <div className="mt-2">
-                        <Link to={`/retailer/issues/${d.id}`} className="text-[12px] text-accent hover:underline inline-flex items-center gap-1">
+                        <Link to={`/retailer/disputes/${d.id}`} className="text-[12px] text-accent hover:underline inline-flex items-center gap-1">
                           Open thread <ArrowUpRight className="size-3" />
                         </Link>
                       </div>

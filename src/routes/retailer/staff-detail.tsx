@@ -29,6 +29,7 @@ const SUB_ROLE_LABEL: Record<RetailerSubRole, string> = {
   owner: 'Owner',
   manager: 'Manager',
   staff: 'Floor staff',
+  delivery_agent: 'Delivery agent',
 };
 
 export default function RetailerStaffDetail() {
@@ -46,10 +47,10 @@ export default function RetailerStaffDetail() {
     enabled: Boolean(id),
   });
 
-  const [newSubRole, setNewSubRole] = useState<'manager' | 'staff'>('staff');
+  const [newSubRole, setNewSubRole] = useState<'manager' | 'staff' | 'delivery_agent'>('staff');
 
   const changeRole = useMutation({
-    mutationFn: (subRole: 'manager' | 'staff') =>
+    mutationFn: (subRole: 'manager' | 'staff' | 'delivery_agent') =>
       api(`/retailer/staff/${id}`, { method: 'PATCH', body: { subRole } }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['retailer', 'staff', id] });
@@ -128,7 +129,7 @@ export default function RetailerStaffDetail() {
                       <span className="text-[12px] text-ink-3">New role</span>
                       <Select
                         value={newSubRole}
-                        onValueChange={(v) => setNewSubRole(v as 'manager' | 'staff')}
+                        onValueChange={(v) => setNewSubRole(v as 'manager' | 'staff' | 'delivery_agent')}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -136,6 +137,7 @@ export default function RetailerStaffDetail() {
                         <SelectContent>
                           <SelectItem value="manager">Manager</SelectItem>
                           <SelectItem value="staff">Floor staff</SelectItem>
+                          <SelectItem value="delivery_agent">Delivery agent</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

@@ -51,9 +51,9 @@ export default function RetailerEarlyDisbursement() {
   return (
     <Page>
       <PageHeader
-        kicker="Settlement"
-        title="Early disbursement"
-        description="Pull a portion of your settled balance ahead of the next payout cycle. Subject to admin approval and a small expedite fee."
+        kicker="Payouts"
+        title="Early payout"
+        description="Take part of your available balance before your next scheduled payout. Needs admin approval and a small fee for releasing it early."
       />
 
       <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
@@ -76,7 +76,7 @@ export default function RetailerEarlyDisbursement() {
           <CardContent className="p-6">
             <SectionHeading kicker="History" title={`${list.length} past request${list.length === 1 ? '' : 's'}`} />
             {isLoading ? <Skeleton className="h-32" /> : list.length === 0 ? (
-              <Empty kicker="None" title="No early disbursement requests yet." />
+              <Empty kicker="None" title="No early payout requests yet." />
             ) : (
               <ul className="space-y-2">
                 {list.map((r) => (

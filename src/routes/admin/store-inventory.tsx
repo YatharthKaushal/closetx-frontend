@@ -250,7 +250,7 @@ function AdjustDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label htmlFor="delta" required>Delta (positive to add, negative to remove)</Label>
+            <Label htmlFor="delta" required>Change (use + to add, − to remove)</Label>
             <Input id="delta" value={delta} onChange={(e) => setDelta(e.target.value)} placeholder="e.g. -3 or 10" />
             <FieldError>{delta && !valid ? 'Enter a non-zero integer' : ''}</FieldError>
           </div>
@@ -337,7 +337,7 @@ function ImportDialog({
         <DialogHeader>
           <DialogTitle>Import inventory CSV</DialogTitle>
           <DialogDescription>
-            Columns: <code>sku,stock</code>. All-or-nothing — if any row fails validation no stock is changed.
+            Columns: <code>sku,stock</code>. It's all or nothing — if any row has an error, nothing is changed.
             Max 5 000 rows.
           </DialogDescription>
         </DialogHeader>

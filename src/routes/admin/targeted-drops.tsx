@@ -120,7 +120,7 @@ export default function AdminTargetedDrops() {
               )}
             </div>
             <div>
-              <Label required>Cohort</Label>
+              <Label required>Customer group</Label>
               <Select value={cohort} onValueChange={(v) => setCohort(v as Cohort)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>

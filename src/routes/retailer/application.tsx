@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, Eye, EyeOff, Loader2, MapPin, Paperclip, Search } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, Eye, EyeOff, Loader2, MapPin, Paperclip, Search, Sparkles } from 'lucide-react';
 import type { ResubmitSnapshot } from '@/lib/types';
 import { Page } from '@/components/ui/page';
 import { CopyableId } from '@/components/ui/copyable-id';
@@ -136,6 +136,17 @@ const DOC_SLOTS: { kind: DocKind; label: string }[] = [
   { kind: 'bank_proof', label: 'Cancelled cheque' },
   { kind: 'other', label: 'Shop-act license' },
 ];
+
+/**
+ * Known-good Cloudinary assets already in our media library — used by the
+ * one-click "Fill with mock documents" dev helper so testers don't have to
+ * pick 5 real files. URLs cycle across the 5 slots.
+ */
+const MOCK_DOC_URLS = [
+  'https://res.cloudinary.com/dwroh4zkk/image/upload/v1780580209/closetx/applications/q0yea7kfy3wx4qqt91xo.png',
+  'https://res.cloudinary.com/dwroh4zkk/image/upload/v1780580212/closetx/applications/my0ia6frucqyaxgfd7u8.png',
+  'https://res.cloudinary.com/dwroh4zkk/image/upload/v1780580215/closetx/applications/qgdomrjyzf3khlysg0uo.png',
+] as const;
 
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -427,6 +438,90 @@ export default function RetailerApplication() {
     }
   }
 
+  /**
+   * Dev/test helper — fills the ACTIVE step with realistic, validation-passing
+   * mock data in one click. Values land in the same controlled `form` state as
+   * manual typing, so every field stays fully editable afterwards. Email and
+   * phone carry a timestamp suffix so repeated runs never trip the duplicate
+   * application / account collision checks at submit.
+   */
+  function fillMockStep() {
+    if (step === 'docs') {
+      fillMockDocs();
+      return;
+    }
+    const stamp = Date.now();
+    const phoneSuffix = String(stamp).slice(-9);
+    if (step === 'identity') {
+      setForm((f) => ({
+        ...f,
+        legalName: 'Asha Mehta',
+        email: `asha.mehta+${stamp}@example.com`,
+        phone: `9${phoneSuffix}`,
+        ...(reapplyId ? {} : { password: 'Mock@1234', confirmPassword: 'Mock@1234' }),
+      }));
+    } else if (step === 'business') {
+      setForm((f) => ({
+        ...f,
+        gstin: '27ABCDE1234F1Z5',
+        pan: 'ABCDE1234F',
+      }));
+    } else if (step === 'storefront') {
+      setForm((f) => ({
+        ...f,
+        storeName: 'Asha Fashion Studio',
+        address: '42 Linking Road, Bandra West',
+        pincode: '400050',
+        city: 'Mumbai',
+        stateCode: '27',
+        // Bandra, Mumbai — distinct from the India-centroid default so the
+        // "pin your location" validation passes.
+        lat: 19.0596,
+        lng: 72.8295,
+        contactPhone: `9${phoneSuffix}`,
+        managerName: 'Asha Mehta',
+        categories: 'Apparel, Footwear',
+        brandsCarried: 'House label',
+      }));
+    } else if (step === 'bank') {
+      setForm((f) => ({
+        ...f,
+        // Penny-drop compares holder name to legal name — keep them aligned.
+        accountHolderName: f.legalName.trim() || 'Asha Mehta',
+        accountNumber: '123456789012',
+        ifsc: 'HDFC0001234',
+        bankName: 'HDFC Bank',
+      }));
+    }
+    setErrors({});
+    toast.success('Step filled with mock data — every field stays editable.');
+  }
+
+  /**
+   * Dev/test helper — fills every empty (or stale-flagged) document slot with a
+   * known-good Cloudinary asset in ONE click, so testers don't have to pick
+   * five real files to reach Submit. Cycles across the mock URLs and stamps a
+   * per-slot filename so each row reads distinctly in the UI and admin review.
+   */
+  function fillMockDocs() {
+    // Cache-buster keeps each fill unique so a re-apply after a previous
+    // mock-filled submission never trips the "old file shown" staleness check
+    // (Cloudinary serves the asset regardless of unknown query params).
+    const stamp = Date.now();
+    setDocs(() => {
+      const next: Partial<Record<DocKind, UploadedDoc>> = {};
+      DOC_SLOTS.forEach(({ kind }, i) => {
+        next[kind] = {
+          url: `${MOCK_DOC_URLS[i % MOCK_DOC_URLS.length]!}?mock=${stamp}`,
+          filename: `mock-${kind}.png`,
+        };
+      });
+      return next;
+    });
+    if (errors['docs']) setErrors((e) => { const n = { ...e }; delete n['docs']; return n; });
+    toast.success('All 5 documents filled with mock files.');
+  }
+
   async function submit() {
     const anyUploading = Object.values(uploading).some(Boolean);
     if (anyUploading) {
@@ -649,9 +744,19 @@ export default function RetailerApplication() {
         </div>
       )}
       <Tabs value={step} onValueChange={(v) => setStep(v as Step)}>
-        <TabsList className="overflow-x-auto whitespace-nowrap">
-          {STEPS.map((s) => <TabsTrigger key={s.key} value={s.key}>{s.label}</TabsTrigger>)}
-        </TabsList>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <TabsList className="overflow-x-auto whitespace-nowrap">
+            {STEPS.map((s) => <TabsTrigger key={s.key} value={s.key}>{s.label}</TabsTrigger>)}
+          </TabsList>
+          <button
+            type="button"
+            onClick={fillMockStep}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-dashed border-line-strong px-2.5 py-1 text-[12px] text-ink-3 transition-colors hover:bg-bg-3 hover:text-ink"
+            title="Dev helper — fills this step with sample data; every field stays editable"
+          >
+            <Sparkles className="size-3" /> Fill step with mock data
+          </button>
+        </div>
 
         <TabsContent value="identity">
           <StepCard>

@@ -31,6 +31,7 @@ const SUB_ROLE_LABEL: Record<RetailerSubRole, string> = {
   owner: 'Owner',
   manager: 'Manager',
   staff: 'Floor staff',
+  delivery_agent: 'Delivery agent',
 };
 
 export default function RetailerStaffPage() {
@@ -239,7 +240,7 @@ function AddStaffDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenC
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
-  const [subRole, setSubRole] = useState<'manager' | 'staff'>('staff');
+  const [subRole, setSubRole] = useState<'manager' | 'staff' | 'delivery_agent'>('staff');
 
   function reset() { setName(''); setEmail(''); setPassword(''); setSubRole('staff'); }
 
@@ -296,11 +297,12 @@ function AddStaffDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenC
           </div>
           <div className="space-y-1.5">
             <Label>Role</Label>
-            <Select value={subRole} onValueChange={(v) => setSubRole(v as 'manager' | 'staff')}>
+            <Select value={subRole} onValueChange={(v) => setSubRole(v as 'manager' | 'staff' | 'delivery_agent')}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="manager">Manager</SelectItem>
                 <SelectItem value="staff">Floor staff</SelectItem>
+                <SelectItem value="delivery_agent">Delivery agent</SelectItem>
               </SelectContent>
             </Select>
           </div>

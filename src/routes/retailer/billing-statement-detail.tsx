@@ -50,10 +50,10 @@ export default function RetailerBillingStatementDetail() {
                 { label: 'Gross', value: formatPaise(data.grossPaise), mono: true },
                 { label: '− Commission', value: formatPaise(data.commissionPaise), mono: true },
                 { label: '− TCS', value: formatPaise(data.tcsPaise), mono: true },
-                { label: '− Refunds debited', value: formatPaise(data.refundsPaise), mono: true },
-                { label: '− Holds', value: formatPaise(data.holdsPaise), mono: true },
+                { label: '− Refunds deducted', value: formatPaise(data.refundsPaise), mono: true },
+                { label: '− Held back', value: formatPaise(data.holdsPaise), mono: true },
                 { label: '± Adjustments', value: formatPaise(data.adjustmentsPaise), mono: true },
-                { label: 'Net payable', value: <strong className="text-ink">{formatPaise(data.netPaise)}</strong>, mono: true },
+                { label: 'Net payout', value: <strong className="text-ink">{formatPaise(data.netPaise)}</strong>, mono: true },
               ]}
             />
           </CardContent>
@@ -62,10 +62,10 @@ export default function RetailerBillingStatementDetail() {
         <Card>
           <CardContent className="p-6">
             <div className="mb-3 flex items-center justify-between">
-              <SectionHeading title="Liability bookings" hint={`${data.liabilityBookings.length} entries`} />
+              <SectionHeading title="Dispute outcomes" hint={`${data.liabilityBookings.length} entries`} />
             </div>
             {data.liabilityBookings.length === 0 ? (
-              <p className="text-[12.5px] text-ink-3 italic">No adjudicated dispute outcomes booked this period.</p>
+              <p className="text-[12.5px] text-ink-3 italic">No dispute decisions recorded this period.</p>
             ) : (
               <ul className="space-y-2">
                 {data.liabilityBookings.map((b) => (

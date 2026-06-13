@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { Lock, Plus } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +34,7 @@ type Hold = {
   releasedReason: string | null;
 };
 
-export default function AdminPayoutHolds() {
+export function PayoutHoldsPanel() {
   const [createOpen, setCreateOpen] = useState(false);
   const [releaseTarget, setReleaseTarget] = useState<Hold | null>(null);
 
@@ -48,17 +47,16 @@ export default function AdminPayoutHolds() {
   const released = list.filter((h) => h.status === 'released');
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Settlement"
-        title="Payout holds"
-        description="Hold a disputed amount off a retailer's next payout. Auto-releases on dispute resolution; manual release recorded with reason."
-        actions={
-          <Button variant="accent" size="sm" iconLeft={<Plus className="size-3.5" />} onClick={() => setCreateOpen(true)}>
-            Place hold
-          </Button>
-        }
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+          Hold back a disputed amount from a retailer's next payout. It releases on its own once the
+          dispute is settled; a manual release is recorded with a reason.
+        </p>
+        <Button variant="accent" size="sm" className="shrink-0" iconLeft={<Plus className="size-3.5" />} onClick={() => setCreateOpen(true)}>
+          Place hold
+        </Button>
+      </div>
 
       <Tabs defaultValue="active">
         <TabsList>
@@ -84,7 +82,7 @@ export default function AdminPayoutHolds() {
           onClose={() => setReleaseTarget(null)}
         />
       )}
-    </Page>
+    </div>
   );
 }
 

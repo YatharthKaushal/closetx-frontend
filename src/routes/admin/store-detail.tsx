@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
   ArrowUpRight,
   Boxes,
+  ChevronDown,
   CircleDot,
   Coins,
   CalendarClock,
@@ -29,6 +30,8 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CopyableId } from '@/components/ui/copyable-id';
 import { ReasonActionDialog } from '@/components/admin/reason-action-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AccountsOnStoreCard } from '@/components/admin/accounts-on-store-card';
 import { PermissionGate } from '@/components/shell/PermissionGate';
 import { cn } from '@/lib/cn';
@@ -69,6 +72,26 @@ type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
 
 export default function AdminStoreDetail() {
   const { id: retailerId, storeId } = useParams<{ id: string; storeId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const TAB_KEYS = ['overview', 'compliance', 'accounts', 'operations'] as const;
+  type TabKey = (typeof TAB_KEYS)[number];
+  function parseTab(v: string | null): TabKey {
+    return TAB_KEYS.includes(v as TabKey) ? (v as TabKey) : 'overview';
+  }
+  const activeTab = parseTab(searchParams.get('tab'));
+  function setActiveTab(v: string) {
+    const next = parseTab(v);
+    setSearchParams(
+      (prev) => {
+        const sp = new URLSearchParams(prev);
+        if (next === 'overview') sp.delete('tab');
+        else sp.set('tab', next);
+        return sp;
+      },
+      { replace: true },
+    );
+  }
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<null | 'pause' | 'suspend' | 'terminate' | 'reverify'>(null);
   const [editing, setEditing] = useState(false);
@@ -233,8 +256,8 @@ export default function AdminStoreDetail() {
         />
         <KpiTile
           icon={<CalendarClock className="size-3.5" />}
-          label="Payout cadence"
-          value={`${s.payoutCadenceDays}d`}
+          label="Pays out"
+          value={`every ${s.payoutCadenceDays}d`}
         />
         <KpiTile
           icon={<Users className="size-3.5" />}
@@ -281,31 +304,27 @@ export default function AdminStoreDetail() {
             {s.status === 'active' && (
               <>
                 <PermissionGate action="store_management.edit">
-                  <Button variant="outline" size="sm" onClick={() => setDialog('pause')}>
+                  <Button variant="ink" size="sm" onClick={() => setDialog('pause')}>
                     Pause
                   </Button>
                 </PermissionGate>
-                <PermissionGate action="retailer.suspend">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    iconLeft={<ShieldAlert className="size-3.5" />}
-                    className="text-warning border-warning/40 hover:bg-warning-soft"
-                    onClick={() => setDialog('suspend')}
-                  >
-                    Suspend
-                  </Button>
-                </PermissionGate>
-                <PermissionGate action="retailer.terminate">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-danger border-danger/40 hover:bg-danger/5"
-                    onClick={() => setDialog('terminate')}
-                  >
-                    Terminate
-                  </Button>
-                </PermissionGate>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" iconRight={<ChevronDown className="size-3.5" />}>
+                      More
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => setDialog('suspend')}>
+                      <ShieldAlert className="size-3.5 text-warning" />
+                      Suspend store
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setDialog('terminate')}>
+                      <X className="size-3.5 text-danger" />
+                      Terminate store
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
             {s.status === 'paused' && (
@@ -333,127 +352,135 @@ export default function AdminStoreDetail() {
         </CardContent>
       </Card>
 
-      {/* Two-column body — Profile (read-mode is a tight 2-col grid; edit-mode swaps
-          to an inline form). Right column carries risk/compliance facts so the
-          operator always has the "why is this store paused/suspended" context next
-          to the lifecycle ribbon above. */}
-      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <SectionHeading kicker="Identity" title="Profile" />
-              {!editing && (
-                <PermissionGate action="store_management.edit">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="compliance">Compliance</TabsTrigger>
+          <TabsTrigger value="accounts">Accounts</TabsTrigger>
+          <TabsTrigger value="operations">Operations</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview">
+          <Card>
+            <CardContent className="p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <SectionHeading kicker="Identity" title="Profile" />
+                {!editing && (
+                  <PermissionGate action="store_management.edit">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      iconLeft={<Pencil className="size-3" />}
+                      onClick={startEdit}
+                    >
+                      Edit
+                    </Button>
+                  </PermissionGate>
+                )}
+              </div>
+
+              {editing && draft ? (
+                <EditForm
+                  draft={draft}
+                  gstin={s.gstin}
+                  serverPlatformFeeBp={s.platformFeeBp}
+                  onChange={setDraft}
+                  onCancel={cancelEdit}
+                  onSave={() => {
+                    if (!draft) return;
+                    const feeChanged = draft.platformFeeBp !== s.platformFeeBp;
+                    if (feeChanged && draft.platformFeeReason.trim().length < 3) {
+                      toast.error('Reason (≥3 chars) is required when changing the platform fee.');
+                      return;
+                    }
+                    saveMut.mutate(draft);
+                  }}
+                  saving={saveMut.isPending}
+                />
+              ) : (
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <ProfileRow label="Legal name" value={s.legalName} />
+                  <ProfileRow label="GSTIN" value={s.gstin} mono />
+                  <ProfileRow label="Address" value={s.address} />
+                  <ProfileRow label="State" value={s.stateCode} mono />
+                  <ProfileRow label="Contact phone" value={s.contactPhone ?? '—'} mono />
+                  <ProfileRow label="Manager" value={s.managerName ?? '—'} />
+                </dl>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="compliance">
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-2">
+                <SectionHeading kicker="Risk" title="Compliance" />
+                <PermissionGate action="kyc.review">
                   <Button
                     variant="outline"
                     size="sm"
-                    iconLeft={<Pencil className="size-3" />}
-                    onClick={startEdit}
+                    iconLeft={<ShieldAlert className="size-3.5" />}
+                    onClick={() => setDialog('reverify')}
                   >
-                    Edit
+                    Ask for KYC again
                   </Button>
                 </PermissionGate>
-              )}
-            </div>
-
-            {editing && draft ? (
-              <EditForm
-                draft={draft}
-                gstin={s.gstin}
-                serverPlatformFeeBp={s.platformFeeBp}
-                onChange={setDraft}
-                onCancel={cancelEdit}
-                onSave={() => {
-                  if (!draft) return;
-                  const feeChanged = draft.platformFeeBp !== s.platformFeeBp;
-                  if (feeChanged && draft.platformFeeReason.trim().length < 3) {
-                    toast.error('Reason (≥3 chars) is required when changing the platform fee.');
-                    return;
+              </div>
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                <ProfileRow
+                  label="Pause reason"
+                  value={s.pauseReason ?? '—'}
+                  tone={s.pauseReason ? 'warning' : 'neutral'}
+                />
+                <ProfileRow
+                  label="Pause mode"
+                  value={
+                    s.status === 'paused'
+                      ? s.pauseVisibility === 'hidden' ? 'Hidden from catalog' : 'Blocking new orders'
+                      : '—'
                   }
-                  saveMut.mutate(draft);
-                }}
-                saving={saveMut.isPending}
-              />
-            ) : (
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                <ProfileRow label="Legal name" value={s.legalName} />
-                <ProfileRow label="GSTIN" value={s.gstin} mono />
-                <ProfileRow label="Address" value={s.address} />
-                <ProfileRow label="State" value={s.stateCode} mono />
-                <ProfileRow label="Contact phone" value={s.contactPhone ?? '—'} mono />
-                <ProfileRow label="Manager" value={s.managerName ?? '—'} />
+                />
+                <ProfileRow
+                  label="Suspend reason"
+                  value={s.suspendReason ?? '—'}
+                  tone={s.suspendReason ? 'danger' : 'neutral'}
+                />
+                <ProfileRow
+                  label="Permanent ban"
+                  value={s.permanentSuspend ? 'Yes' : 'No'}
+                  tone={s.permanentSuspend ? 'danger' : 'neutral'}
+                />
+                <ProfileRow
+                  label="Pause until"
+                  value={s.pauseUntil ? new Date(s.pauseUntil).toLocaleString() : '—'}
+                />
               </dl>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-start justify-between gap-2">
-              <SectionHeading kicker="Risk" title="Compliance" />
-              <PermissionGate action="kyc.review">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  iconLeft={<ShieldAlert className="size-3.5" />}
-                  onClick={() => setDialog('reverify')}
-                >
-                  Trigger re-KYC
-                </Button>
-              </PermissionGate>
-            </div>
-            <dl className="mt-3 space-y-3">
-              <ProfileRow
-                label="Pause reason"
-                value={s.pauseReason ?? '—'}
-                tone={s.pauseReason ? 'warning' : 'neutral'}
-              />
-              <ProfileRow
-                label="Pause mode"
-                value={
-                  s.status === 'paused'
-                    ? s.pauseVisibility === 'hidden' ? 'Hidden from catalog' : 'Blocking new orders'
-                    : '—'
-                }
-              />
-              <ProfileRow
-                label="Suspend reason"
-                value={s.suspendReason ?? '—'}
-                tone={s.suspendReason ? 'danger' : 'neutral'}
-              />
-              <ProfileRow
-                label="Permanent ban"
-                value={s.permanentSuspend ? 'Yes' : 'No'}
-                tone={s.permanentSuspend ? 'danger' : 'neutral'}
-              />
-              <ProfileRow
-                label="Pause until"
-                value={s.pauseUntil ? new Date(s.pauseUntil).toLocaleString() : '—'}
-              />
-            </dl>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="accounts">
+          {retailerId && <AccountsOnStoreCard retailerId={retailerId} />}
+        </TabsContent>
 
-      {/* Accounts roster — owner + managers + floor staff with deep links and
-          quick actions. The component shares its React-Query key with the KPI
-          tile above so refetches stay coherent. */}
-      {retailerId && <AccountsOnStoreCard retailerId={retailerId} />}
-
-      <div className="mt-6">
-        <SectionHeading kicker="Operations" title="Manage this store" />
-        <p className="mt-1 text-[12.5px] text-ink-3">
-          Each entry deep-links into the admin operator view scoped to this store.
-        </p>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <OpsTile icon={Package}     label="Listings"   href={`/admin/retailers/${retailerId}/stores/${storeId}/listings`} />
-        <OpsTile icon={Boxes}       label="Inventory"  href={`/admin/retailers/${retailerId}/stores/${storeId}/inventory`} />
-        <OpsTile icon={ShoppingCart} label="Orders"    href={`/admin/retailers/${retailerId}/stores/${storeId}/orders`} />
-        <OpsTile icon={Undo2}       label="Returns"    href={`/admin/retailers/${retailerId}/stores/${storeId}/returns`} />
-        <OpsTile icon={PackageX}    label="Held items" href={`/admin/retailers/${retailerId}/stores/${storeId}/held-items`} />
-        <OpsTile icon={Tag}         label="Promotions" href={`/admin/retailers/${retailerId}/stores/${storeId}/promotions`} />
-      </div>
+        <TabsContent value="operations">
+          <div>
+            <SectionHeading kicker="Operations" title="Manage this store" />
+            <p className="mt-1 text-[12.5px] text-ink-3">
+              Each entry deep-links into the admin operator view scoped to this store.
+            </p>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <OpsTile icon={Package}     label="Listings"   href={`/admin/retailers/${retailerId}/stores/${storeId}/listings`} />
+            <OpsTile icon={Boxes}       label="Inventory"  href={`/admin/retailers/${retailerId}/stores/${storeId}/inventory`} />
+            <OpsTile icon={ShoppingCart} label="Orders"    href={`/admin/retailers/${retailerId}/stores/${storeId}/orders`} />
+            <OpsTile icon={Undo2}       label="Returns"    href={`/admin/retailers/${retailerId}/stores/${storeId}/returns`} />
+            <OpsTile icon={PackageX}    label="Held items" href={`/admin/retailers/${retailerId}/stores/${storeId}/held-items`} />
+            <OpsTile icon={Tag}         label="Promotions" href={`/admin/retailers/${retailerId}/stores/${storeId}/promotions`} />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <ReasonActionDialog
         open={dialog === 'pause'}

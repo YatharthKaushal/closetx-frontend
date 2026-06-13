@@ -97,7 +97,7 @@ export default function AdminApplicationsDetail() {
         description={`Submitted ${formatAge(a.submittedAt)} · ${a.email} · ${a.phone}`}
         actions={
           <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-            <Link to="/admin/applications">Back to queue</Link>
+            <Link to="/admin/compliance?tab=applications">Back to queue</Link>
           </Button>
         }
       />

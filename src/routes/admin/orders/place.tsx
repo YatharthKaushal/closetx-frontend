@@ -26,7 +26,6 @@ type AdminAddress = {
   stateCode: string;
   isDefault: boolean;
 };
-import { Page, PageHeader } from '@/components/ui/page';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -46,7 +45,7 @@ import { RoleGate } from '@/components/shell/RoleGate';
 type AdminStore = Store & { id: string };
 type CartLine = { variantId: string; qty: number };
 
-export default function PlaceTestOrder() {
+export function PlaceTestOrderPanel() {
   // Dev-only QA tool — gated behind super-admin sub-role + import.meta.env.DEV
   // so production admin sessions cannot accidentally place test orders against
   // real consumer data.
@@ -59,19 +58,15 @@ export default function PlaceTestOrder() {
 
 function DevOnlyBlock() {
   return (
-    <Page>
-      <PageHeader
-        title="Place test order"
-        description="This QA tool is only available in dev builds."
-        actions={<MockDataBadge label="DEV-ONLY" />}
-      />
+    <div>
+      <div className="mb-4 flex justify-end"><MockDataBadge label="DEV-ONLY" /></div>
       <Card>
         <CardContent className="p-6 text-[13px] text-ink-3">
           Production admins should not place orders against live consumer data. Spin up the dashboard
           with `npm run dev` to use this tool.
         </CardContent>
       </Card>
-    </Page>
+    </div>
   );
 }
 
@@ -204,12 +199,14 @@ function PlaceTestOrderInner() {
   }
 
   return (
-    <Page>
-      <PageHeader
-        title="Place a test order"
-        description="Walk an order through the lifecycle without a real consumer or payment gateway. Mint a synthetic customer, pick a store + items, choose how the payment should resolve."
-        actions={<MockDataBadge label="DEV-ONLY" />}
-      />
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+          Walk an order through the lifecycle without a real consumer or payment gateway. Mint a
+          synthetic customer, pick a store + items, choose how the payment should resolve.
+        </p>
+        <MockDataBadge label="DEV-ONLY" />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Left column: setup steps */}
@@ -509,7 +506,7 @@ function PlaceTestOrderInner() {
           )}
         </div>
       </div>
-    </Page>
+    </div>
   );
 }
 

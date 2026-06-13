@@ -93,13 +93,13 @@ export default function RetailerReturnDetail() {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Badge tone={data.kind === 'door_return' ? 'info' : 'neutral'}>{data.kind}</Badge>
+        <Badge tone={data.kind === 'door_return' ? 'info' : 'neutral'}>{data.kind === 'door_return' ? 'Returned at door' : data.kind.replace(/_/g, ' ')}</Badge>
         <Badge tone={data.storeDecision === 'accepted' ? 'success' : data.storeDecision === 'rejected' ? 'danger' : 'warning'}>
           {data.storeDecision}
         </Badge>
         {data.reasonCategory && <Badge tone="neutral">{data.reasonCategory.replace('_', ' ')}</Badge>}
         {data.agentDisposition && (
-          <Badge tone={agentTone}>Agent: {data.agentDisposition}</Badge>
+          <Badge tone={agentTone}>Delivery agent: {data.agentDisposition.replace(/_/g, ' ')}</Badge>
         )}
       </div>
 
@@ -167,7 +167,7 @@ export default function RetailerReturnDetail() {
 
           {data.heldItems && data.heldItems.length > 0 && (
             <div className="mt-6 rounded border border-warning/40 bg-warning/5 p-3 text-[13px]">
-              <div className="font-medium text-warning">Held items</div>
+              <div className="font-medium text-warning">Items held</div>
               <ul className="mt-1 space-y-1">
                 {data.heldItems.map((h) => (
                   <li key={h.id} className="font-mono">

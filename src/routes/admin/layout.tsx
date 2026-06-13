@@ -1,30 +1,18 @@
 import {
-  AlertTriangle,
-  Award,
   BarChart3,
   Building2,
-  Coins,
-  FileEdit,
-  FileSearch,
-  FileText,
   Folder,
   GanttChart,
   Inbox,
-  Layers,
   LayoutDashboard,
-  MessageSquare,
   Package,
-  PackageX,
   Receipt,
   ShieldAlert,
   ShieldCheck,
   Sliders,
   Sparkles,
-  Star,
   Tag,
-  UserPlus,
   Users,
-  UserX,
   Wallet,
   Zap,
 } from 'lucide-react';
@@ -56,107 +44,177 @@ const GROUPS: SidebarGroup[] = [
     label: 'Operations',
     items: [
       { to: '/admin/dashboard', label: 'Dashboard', end: true, icon: LayoutDashboard },
-      { to: '/admin/applications', label: 'Applications', end: true, icon: Inbox, action: 'applications.view' },
-      { to: '/admin/retailers', label: 'Retailers', end: true, icon: Users, action: 'applications.view' },
+      {
+        to: '/admin/users',
+        label: 'Users',
+        end: false,
+        icon: Users,
+        anyAction: ['applications.view', 'consumers.view'],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/users') ||
+          l.pathname.startsWith('/admin/retailers') ||
+          l.pathname.startsWith('/admin/consumers'),
+      },
       { to: '/admin/stores', label: 'Stores', end: true, icon: Building2, action: 'store_management.view' },
-      { to: '/admin/retailers/new', label: 'New retailer', end: true, icon: UserPlus, action: 'retailer.approve' },
     ],
   },
   {
     label: 'Compliance',
     items: [
-      { to: '/admin/compliance', label: 'Compliance queue', end: true, icon: ShieldCheck, action: 'kyc.review' },
-      { to: '/admin/change-requests', label: 'Change requests', end: false, icon: FileEdit, action: 'change_requests.view' },
-      { to: '/admin/policy-enforcement', label: 'Policy enforcement', end: true, icon: ShieldAlert, action: 'moderation.view' },
-      { to: '/admin/data-exports', label: 'Data exports', end: true, icon: FileSearch, action: 'data_exports.manage' },
-      { to: '/admin/account-deletions', label: 'Account deletions', end: true, icon: UserX, action: 'account_deletions.manage' },
-    ],
-  },
-  {
-    label: 'Identity',
-    items: [
-      { to: '/admin/admins', label: 'Admin team', end: true, icon: ShieldCheck, action: 'team.list' },
-      { to: '/admin/sub-roles', label: 'Sub-roles', end: true, icon: GanttChart, action: 'sub_roles.view' },
+      {
+        to: '/admin/compliance',
+        label: 'KYC',
+        end: false,
+        icon: ShieldCheck,
+        anyAction: ['kyc.review', 'change_requests.view', 'moderation.view', 'applications.view'],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/compliance') ||
+          l.pathname.startsWith('/admin/change-requests') ||
+          l.pathname.startsWith('/admin/policy-enforcement') ||
+          l.pathname.startsWith('/admin/applications'),
+      },
     ],
   },
   {
     label: 'Orders',
     items: [
-      { to: '/admin/orders', label: 'All orders', end: true, icon: Receipt, action: 'orders.view' },
-      { to: '/admin/orders/new', label: 'Place test order', end: true, icon: Sparkles, action: 'simulate.run' },
-      { to: '/admin/refund-reconciliation', label: 'Refund reconciliation', end: true, icon: Coins, action: 'refunds.view' },
-      { to: '/admin/post-payout-recovery', label: 'Post-payout recovery', end: true, icon: Coins, action: 'post_payout_recovery.manage' },
-      { to: '/admin/held-items', label: 'Held items', end: true, icon: PackageX, action: 'held_items.view' },
-      { to: '/admin/issues', label: 'Issues', end: false, icon: AlertTriangle, action: 'disputes.view' },
-      { to: '/admin/delivery-windows', label: 'Delivery windows', end: true, icon: GanttChart, action: 'platform_config.view' },
+      { to: '/admin/orders', label: 'All Orders', end: true, icon: Receipt, action: 'orders.view' },
+      {
+        // Disputes & refunds hub — the dispute queue plus the refunds those
+        // disputes trigger, surfaced as tabs under one entry.
+        to: '/admin/disputes',
+        label: 'Disputes & refunds',
+        end: false,
+        icon: ShieldAlert,
+        anyAction: ['disputes.view', 'refunds.view'],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/disputes') ||
+          l.pathname.startsWith('/admin/refund-reconciliation'),
+      },
     ],
   },
   {
-    label: 'Settlement',
+    label: 'Payouts',
     items: [
-      { to: '/admin/billing-console', label: 'Billing console', end: true, icon: Wallet, action: 'payouts.view' },
-      { to: '/admin/payouts-pipeline', label: 'Payouts pipeline', end: true, icon: GanttChart, action: 'payouts.view' },
-      { to: '/admin/payout-holds', label: 'Payout holds', end: true, icon: Wallet, action: 'payouts.hold' },
-      { to: '/admin/payout-adjustments', label: 'Payout adjustments', end: true, icon: Wallet, action: 'payouts.hold' },
-      { to: '/admin/early-disbursement-decisions', label: 'Early disbursement', end: true, icon: Zap, action: 'early_disbursement.decide' },
-      { to: '/admin/tail-of-cycle', label: 'Tail of cycle', end: true, icon: Coins, action: 'payouts.view' },
-      { to: '/admin/invoice-ops', label: 'Invoice ops', end: true, icon: FileText, action: 'invoicing.numbering.edit' },
-      { to: '/admin/invoice-numbering', label: 'Invoice numbering', end: true, icon: FileText, action: 'invoicing.numbering.edit' },
-      { to: '/admin/gst-returns', label: 'GST returns', end: true, icon: FileText, action: 'invoicing.gst_returns.generate' },
+      // Single sidebar entry — the Payouts hub opens straight into its tabs
+      // (Payouts / Invoices & GST / Bank matching / Fees). Visible to anyone
+      // with access to at least one of those surfaces.
+      {
+        to: '/admin/money',
+        label: 'Payouts',
+        end: false,
+        icon: Wallet,
+        anyAction: [
+          'payouts.view',
+          'payouts.hold',
+          'early_disbursement.decide',
+          'wallet_payouts.process',
+          'invoicing.numbering.edit',
+          'invoicing.gst_returns.generate',
+          'refunds.view',
+          'platform_config.view',
+        ],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/money') ||
+          l.pathname.startsWith('/admin/payouts') ||
+          l.pathname.startsWith('/admin/payout-') ||
+          l.pathname.startsWith('/admin/early-disbursement') ||
+          l.pathname.startsWith('/admin/tail-of-cycle') ||
+          l.pathname.startsWith('/admin/wallet-payouts') ||
+          l.pathname.startsWith('/admin/billing-console') ||
+          l.pathname.startsWith('/admin/invoice-') ||
+          l.pathname.startsWith('/admin/gst-returns') ||
+          l.pathname.startsWith('/admin/payment-') ||
+          l.pathname.startsWith('/admin/fees'),
+      },
     ],
   },
   {
     label: 'Promotions',
     items: [
       { to: '/admin/promotions', label: 'Promotions', end: false, icon: Tag, action: 'promotions.view' },
-      { to: '/admin/targeted-drops', label: 'Targeted drops', end: true, icon: Sparkles, action: 'promotions.create' },
-      { to: '/admin/clubbing', label: 'Clubbing matrix', end: true, icon: Layers, action: 'clubbing.view' },
-      { to: '/admin/promotion-preview', label: 'Pricing simulator', end: true, icon: Zap, action: 'promotions.view' },
-      { to: '/admin/platform/delegation-modes', label: 'Feature controls', end: true, icon: Sliders, action: 'platform_config.edit' },
+      { to: '/admin/targeted-drops', label: 'Targeted Drops', end: true, icon: Sparkles, action: 'promotions.create' },
     ],
   },
   {
-    label: 'Finance',
+    label: 'Platform',
     items: [
-      { to: '/admin/fees', label: 'Fees & charges', end: true, icon: Coins, action: 'platform_config.view' },
-      { to: '/admin/payment-reconciliation', label: 'Payment reconciliation', end: true, icon: GanttChart, action: 'refunds.view' },
-      { to: '/admin/payment-failures', label: 'Payment failures', end: true, icon: ShieldAlert, action: 'refunds.view' },
-      { to: '/admin/wallet-payouts', label: 'Wallet payouts', end: true, icon: Coins, action: 'wallet_payouts.process' },
+      {
+        to: '/admin/platform-rules',
+        label: 'Platform rules',
+        end: false,
+        icon: Sliders,
+        anyAction: [
+          'clubbing.view',
+          'platform_config.edit',
+          'platform_config.view',
+          'loyalty.view',
+          'community.moderate',
+          'moderation.view',
+        ],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/platform-rules') ||
+          l.pathname.startsWith('/admin/clubbing') ||
+          l.pathname.startsWith('/admin/platform/delegation-modes') ||
+          l.pathname.startsWith('/admin/delivery-windows') ||
+          l.pathname.startsWith('/admin/engagement') ||
+          l.pathname.startsWith('/admin/customers') ||
+          l.pathname.startsWith('/admin/loyalty') ||
+          l.pathname.startsWith('/admin/community-moderation') ||
+          l.pathname.startsWith('/admin/reviews-moderation'),
+      },
     ],
   },
   {
-    label: 'Customers',
+    label: 'Developer',
     items: [
-      { to: '/admin/loyalty', label: 'Loyalty config', end: true, icon: Award, action: 'loyalty.view' },
-      { to: '/admin/consumers', label: 'Consumers', end: false, icon: Users, action: 'consumers.view' },
-      { to: '/admin/community-moderation', label: 'Community moderation', end: true, icon: MessageSquare, action: 'community.moderate' },
-      { to: '/admin/reviews-moderation', label: 'Reviews moderation', end: true, icon: Star, action: 'moderation.view' },
+      {
+        to: '/admin/developer',
+        label: 'Developer only',
+        end: false,
+        icon: Zap,
+        anyAction: ['simulate.run', 'promotions.view'],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/developer') ||
+          l.pathname.startsWith('/admin/orders/new') ||
+          l.pathname.startsWith('/admin/promotion-preview'),
+      },
     ],
   },
   {
-    label: 'Reports',
+    label: 'Catalog',
     items: [
-      { to: '/admin/reports/headline', label: 'Headline', end: true, icon: BarChart3, action: 'reports.view' },
-      { to: '/admin/reports/leaderboard', label: 'Leaderboard', end: true, icon: BarChart3, action: 'reports.view' },
-      { to: '/admin/reports/funnel', label: 'Funnel', end: true, icon: BarChart3, action: 'reports.view' },
-      { to: '/admin/reports/feature-usage', label: 'Feature usage', end: true, icon: BarChart3, action: 'reports.view' },
-      { to: '/admin/reports/operational', label: 'Operational', end: true, icon: BarChart3, action: 'reports.view' },
-      { to: '/admin/reports/below-floor', label: 'Below floor', end: true, icon: ShieldAlert, action: 'reports.view' },
-      { to: '/admin/reports/compliance', label: 'Floor breaches', end: true, icon: ShieldAlert, action: 'reports.view' },
+      { to: '/admin/listings', label: 'Listings Search', end: true, icon: Package, action: 'moderation.view' },
+      { to: '/admin/collections', label: 'Featured Selections', end: false, icon: Folder, action: 'moderation.view' },
+      { to: '/admin/catalog-moderation', label: 'Catalog Moderation', end: true, icon: ShieldAlert, action: 'moderation.decide' },
+    ],
+  },
+  {
+    label: 'Analytics',
+    items: [
+      { to: '/admin/reports', label: 'Analytics', end: true, icon: BarChart3, action: 'reports.view' },
+    ],
+  },
+  {
+    label: 'Identity',
+    items: [
+      {
+        to: '/admin/identity',
+        label: 'Admin Team',
+        end: false,
+        icon: GanttChart,
+        anyAction: ['team.list'],
+        activeWhen: (l) =>
+          l.pathname.startsWith('/admin/identity') ||
+          l.pathname.startsWith('/admin/admins') ||
+          l.pathname.startsWith('/admin/sub-roles'),
+      },
     ],
   },
   {
     label: 'Inbox',
     items: [
       { to: '/admin/inbox', label: 'Notifications', end: true, icon: Inbox },
-    ],
-  },
-  {
-    label: 'Catalog',
-    items: [
-      { to: '/admin/listings', label: 'Listings search', end: true, icon: Package, action: 'moderation.view' },
-      { to: '/admin/collections', label: 'Featured Selections', end: false, icon: Folder, action: 'moderation.view' },
-      { to: '/admin/catalog-moderation', label: 'Catalog moderation', end: true, icon: ShieldAlert, action: 'moderation.decide' },
     ],
   },
 ];
@@ -179,13 +237,30 @@ export default function AdminLayout() {
     staleTime: 5 * 60 * 1000,
     refetchOnMount: 'always',
   });
-  const visibleGroups = filterSidebarGroups(GROUPS, permissions);
+  // Pending-dispute badge on the Disputes nav item (polled).
+  const counts = useQuery({
+    queryKey: ['admin', 'issues-counts'],
+    queryFn: () => api<{ pendingDisputes: number; pendingIssues: number }>('/admin/issues-counts'),
+    enabled: permissions?.['disputes.view'] === true,
+    refetchInterval: 30_000,
+  });
+  // One Disputes queue now covers every kind, so the badge counts all pending
+  // items awaiting admin (former disputes + queries + complaints).
+  const pendingTotal = (counts.data?.pendingDisputes ?? 0) + (counts.data?.pendingIssues ?? 0);
+  const groupsWithBadges = GROUPS.map((g) => ({
+    ...g,
+    items: g.items.map((it) =>
+      it.to === '/admin/disputes' ? { ...it, badge: pendingTotal } : it,
+    ),
+  }));
+  const visibleGroups = filterSidebarGroups(groupsWithBadges, permissions);
   return (
     <RoleGate kind="admin">
       <SidebarShell
         kindLabel="Admin"
         groups={visibleGroups}
-        searchHint="Search retailers, stores, promos…"
+        searchHint="Search pages, retailers, stores…"
+        paletteScope="admin"
       />
     </RoleGate>
   );

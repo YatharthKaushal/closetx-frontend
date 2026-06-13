@@ -17,6 +17,8 @@ type Props = {
   /** Trigger label override; defaults to "Pick a store". */
   placeholder?: string;
   disabled?: boolean;
+  /** Extra non-store options rendered above the store list (e.g. "All", "Platform-wide"). */
+  extraOptions?: { value: string; label: string }[];
 };
 
 /**
@@ -24,7 +26,7 @@ type Props = {
  * /admin/stores once (React Query dedups across mounts) and renders a
  * popover with text filter so admins don't have to copy UUIDs around.
  */
-export function StoreCombobox({ value, onChange, placeholder = 'Pick a store', disabled }: Props) {
+export function StoreCombobox({ value, onChange, placeholder = 'Pick a store', disabled, extraOptions }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -34,6 +36,8 @@ export function StoreCombobox({ value, onChange, placeholder = 'Pick a store', d
   });
   const stores = data ?? [];
 
+  const extra = extraOptions ?? [];
+  const selectedExtra = extra.find((o) => o.value === value);
   const selected = stores.find((s) => s.id === value);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -45,6 +49,21 @@ export function StoreCombobox({ value, onChange, placeholder = 'Pick a store', d
     );
   }, [query, stores]);
 
+  /**
+   * Visible extras: always include the currently-selected extra so users don't
+   * "lose" their selection when they start typing. Then surface any that match
+   * the query (substring on label). Order: selected first, then others matching.
+   */
+  const visibleExtras = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return extra;
+    const matches = extra.filter((o) => o.label.toLowerCase().includes(q));
+    if (!selectedExtra) return matches;
+    return matches.some((o) => o.value === selectedExtra.value)
+      ? matches
+      : [selectedExtra, ...matches];
+  }, [query, extra, selectedExtra]);
+
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(''); }}>
       <PopoverTrigger asChild>
@@ -55,10 +74,12 @@ export function StoreCombobox({ value, onChange, placeholder = 'Pick a store', d
             'flex h-9 w-full items-center justify-between gap-2 rounded-md border border-line-2 bg-bg px-3 text-[13.5px]',
             'hover:border-line-strong focus:outline-none focus:border-ink focus:ring-2 focus:ring-accent/20',
             'disabled:cursor-not-allowed disabled:opacity-60',
-            selected ? 'text-ink' : 'text-ink-4',
+            selected || selectedExtra ? 'text-ink' : 'text-ink-4',
           )}
         >
-          {selected ? (
+          {selectedExtra ? (
+            <span className="truncate">{selectedExtra.label}</span>
+          ) : selected ? (
             <span className="flex items-baseline gap-2 truncate">
               <span className="truncate">{selected.legalName}</span>
               <span className="font-mono text-[11px] text-ink-3">{selected.id.slice(0, 8)}…</span>
@@ -83,11 +104,31 @@ export function StoreCombobox({ value, onChange, placeholder = 'Pick a store', d
           </div>
         </div>
         <div className="max-h-72 overflow-y-auto py-1">
-          {filtered.length === 0 ? (
+          {visibleExtras.map((o) => {
+            const active = o.value === value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setOpen(false); setQuery(''); }}
+                className={cn(
+                  'flex w-full items-start gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-bg-2',
+                  active && 'bg-bg-2',
+                )}
+              >
+                <Check className={cn('size-3.5 mt-0.5 text-ink-3 shrink-0', !active && 'invisible')} />
+                <div className="min-w-0 flex-1 text-ink">{o.label}</div>
+              </button>
+            );
+          })}
+          {visibleExtras.length > 0 && filtered.length > 0 && (
+            <div className="my-1 border-t border-line" />
+          )}
+          {filtered.length === 0 && visibleExtras.length === 0 ? (
             <div className="px-3 py-6 text-center text-[12px] text-ink-4">
               {isLoading ? 'Loading…' : 'No stores match.'}
             </div>
-          ) : (
+          ) : filtered.length === 0 ? null : (
             filtered.map((s) => {
               const active = s.id === value;
               return (

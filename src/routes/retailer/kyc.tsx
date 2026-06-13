@@ -6,7 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { uploadMedia } from '@/lib/upload';
 import { kycReverificationStatusMeta } from '@/lib/status';
 import type { KycReverification, RequiredDocumentType } from '@/lib/types';
-import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
+import { SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,13 @@ const DOC_SLOTS: { kind: RequiredDocumentType; label: string }[] = [
 
 type LocalUpload = { url: string; filename: string };
 
-export default function RetailerKyc() {
+/**
+ * KYC re-verification cycle (annual / compliance-triggered). Rendered as a
+ * section inside the Store settings → KYC page, alongside the compliance
+ * documents and fees. No `Page`/`PageHeader` of its own — the host section
+ * supplies the heading.
+ */
+export function KycReverificationPanel() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['retailer', 'kyc'],
@@ -84,24 +90,16 @@ export default function RetailerKyc() {
   }
 
   if (isLoading) {
-    return (
-      <Page>
-        <PageHeader kicker="Compliance" title="KYC re-verification" />
-        <Skeleton className="h-72" />
-      </Page>
-    );
+    return <Skeleton className="h-72" />;
   }
 
   if (!data) {
     return (
-      <Page>
-        <PageHeader kicker="Compliance" title="KYC re-verification" />
-        <Empty
-          kicker="All clear"
-          title="No re-verification cycle right now."
-          description="Trendzo will open a new cycle annually or if compliance flags your account."
-        />
-      </Page>
+      <Empty
+        kicker="All clear"
+        title="No re-verification cycle right now."
+        description="Trendzo will open a new cycle annually or if compliance flags your account."
+      />
     );
   }
 
@@ -121,12 +119,10 @@ export default function RetailerKyc() {
   const anyBusy = Object.values(busy).some(Boolean);
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Compliance"
-        title="KYC re-verification"
-        description="Annual compliance check. Upload current documents before the due date to avoid suspension."
-      />
+    <>
+      <p className="mb-4 max-w-3xl text-[13px] text-ink-3 leading-relaxed">
+        Annual compliance check. Upload current documents before the due date to avoid suspension.
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -263,6 +259,6 @@ export default function RetailerKyc() {
           e.target.value = '';
         }}
       />
-    </Page>
+    </>
   );
 }

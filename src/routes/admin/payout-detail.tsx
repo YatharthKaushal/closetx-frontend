@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle2, Lock, RefreshCcw, Sliders } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatAge, formatPaise } from '@/lib/status';
-import type { PayoutCycle } from '@/lib/types';
+import type { AdminStoreView, PayoutCycle } from '@/lib/types';
 import { Page, PageHeader, SectionHeading } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,47 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MetaList } from '@/components/ui/meta-list';
+import { WaterfallChart, type WaterfallStep } from '@/components/ui/waterfall-chart';
+
+/**
+ * Inputs are pulled by name rather than the full PayoutCycle type so the
+ * waterfall has a narrow contract. Optional fields fall back to 0 to keep the
+ * chart well-formed even on incomplete responses.
+ */
+type WaterfallInput = {
+  grossPaise: number;
+  commissionPaise: number;
+  commissionTaxPaise?: number;
+  refundsHeldPaise: number;
+  adjustmentsPaise: number;
+  netPaise: number;
+};
+
+function buildWaterfallSteps(p: WaterfallInput): WaterfallStep[] {
+  const steps: WaterfallStep[] = [
+    { label: 'Gross', amountPaise: p.grossPaise, kind: 'start' },
+  ];
+  if (p.commissionPaise > 0) {
+    steps.push({ label: 'Commission', amountPaise: p.commissionPaise, kind: 'deduction' });
+  }
+  const tax = p.commissionTaxPaise ?? 0;
+  if (tax > 0) {
+    steps.push({ label: 'GST on commission', amountPaise: tax, kind: 'deduction' });
+  }
+  if (p.refundsHeldPaise > 0) {
+    steps.push({ label: 'Refunds held', amountPaise: p.refundsHeldPaise, kind: 'deduction' });
+  }
+  if (p.adjustmentsPaise !== 0) {
+    steps.push({
+      label: 'Adjustments',
+      // sign is encoded by the `kind` field; the chart's `+/-` prefix uses it.
+      amountPaise: Math.abs(p.adjustmentsPaise),
+      kind: p.adjustmentsPaise > 0 ? 'addition' : 'deduction',
+    });
+  }
+  steps.push({ label: 'Net payout', amountPaise: p.netPaise, kind: 'total' });
+  return steps;
+}
 import {
   Dialog,
   DialogContent,
@@ -37,6 +78,14 @@ export default function AdminPayoutDetail() {
     enabled: Boolean(id),
   });
 
+  const storesQuery = useQuery({
+    queryKey: ['admin', 'stores', 'all'],
+    queryFn: () => api<AdminStoreView[]>('/admin/stores'),
+    enabled: Boolean(data?.storeId),
+  });
+  const store = storesQuery.data?.find((s) => s.id === data?.storeId);
+  const retailerId = store?.retailer?.id;
+
   const retry = useMutation({
     mutationFn: () => api(`/admin/payouts/${id}/retry`, { method: 'POST' }),
     onSuccess: () => {
@@ -57,7 +106,7 @@ export default function AdminPayoutDetail() {
         description={`${formatPaise(data.amountPaise)} · status ${data.status}`}
         actions={
           <Button asChild variant="ghost" size="sm" iconLeft={<ArrowLeft className="size-3.5" />}>
-            <Link to="/admin/payouts-pipeline">Back</Link>
+            <Link to="/admin/money?tab=payouts">Back</Link>
           </Button>
         }
       />
@@ -70,6 +119,33 @@ export default function AdminPayoutDetail() {
           {data.status.replace(/_/g, ' ')}
         </Badge>
         <Badge tone="neutral" flat>{data.retryCount} retries</Badge>
+        {/*
+         * Cross-links resolve retailerId via the stores cache. Render a
+         * deterministic skeleton while that secondary query is in flight so
+         * the chips don't pop in after the rest of the page is interactive.
+         */}
+        {data.storeId && storesQuery.isLoading ? (
+          <Skeleton className="h-5 w-40 rounded-full" />
+        ) : (
+          <>
+            {data.storeId && retailerId && (
+              <Link
+                to={`/admin/retailers/${retailerId}/stores/${data.storeId}`}
+                className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2 py-0.5 text-[11.5px] text-ink-3 hover:text-ink hover:bg-bg-3"
+              >
+                Open store
+              </Link>
+            )}
+            {retailerId && (
+              <Link
+                to={`/admin/retailers/${retailerId}`}
+                className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-2 px-2 py-0.5 text-[11.5px] text-ink-3 hover:text-ink hover:bg-bg-3"
+              >
+                Open retailer
+              </Link>
+            )}
+          </>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -114,10 +190,13 @@ export default function AdminPayoutDetail() {
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-5">
             <SectionHeading kicker="Deductions" title="What came off the gross" />
-            {data.deductions && data.deductions.length > 0 ? (
-              <ul className="divide-y divide-line">
+
+            <WaterfallChart steps={buildWaterfallSteps(data)} />
+
+            {data.deductions && data.deductions.length > 0 && (
+              <ul className="divide-y divide-line border-t border-line pt-2">
                 {data.deductions.map((d) => (
                   <li key={d.kind} className="flex items-center justify-between py-2 text-[13px]">
                     <span className="text-ink-2">{d.label}</span>
@@ -129,8 +208,6 @@ export default function AdminPayoutDetail() {
                   <span className="font-mono text-ink">{formatPaise(data.netPaise)}</span>
                 </li>
               </ul>
-            ) : (
-              <p className="text-[13px] text-ink-3">No deductions on this cycle.</p>
             )}
           </CardContent>
         </Card>

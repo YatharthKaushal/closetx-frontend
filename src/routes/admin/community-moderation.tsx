@@ -4,14 +4,13 @@ import { Check, Edit, Trash2, UserX } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatAge } from '@/lib/status';
 import type { CommunityFlag } from '@/lib/types';
-import { Page, PageHeader } from '@/components/ui/page';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export default function AdminCommunityModeration() {
+export function CommunityModerationPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'community-moderation'],
     queryFn: () => api<CommunityFlag[]>('/admin/community-moderation'),
@@ -19,12 +18,11 @@ export default function AdminCommunityModeration() {
   const list = (data ?? []).filter((f) => f.status === 'open');
 
   return (
-    <Page>
-      <PageHeader
-        kicker="Community"
-        title="Community moderation"
-        description="Flagged community posts. Approve to dismiss the flag, edit to scrub problematic text, take down to hide, or ban the author."
-      />
+    <div>
+      <p className="mb-4 max-w-2xl text-[13px] text-ink-3 leading-relaxed">
+        Flagged community posts. Approve to dismiss the flag, edit to scrub problematic text, take
+        down to hide, or ban the author.
+      </p>
 
       {isLoading ? <Skeleton className="h-32" /> : list.length === 0 ? (
         <Empty kicker="All clear" title="No flagged posts." />
@@ -54,6 +52,6 @@ export default function AdminCommunityModeration() {
           ))}
         </ul>
       )}
-    </Page>
+    </div>
   );
 }
